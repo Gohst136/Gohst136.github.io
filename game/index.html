@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Aetherforge</title>
+<meta name="description" content="Verschmilz Runen zu immer mächtigeren Fähigkeiten und schick sie in die Arena." />
+<meta name="theme-color" content="#0a0418" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Aetherforge" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Kopfzeile: Ressourcen -->
+  <header id="topbar">
+    <div class="res" id="resEssence"><span class="ico">✦</span><b>0</b><i>Essenz</i></div>
+    <div class="res" id="resPower"><span class="ico">⚡</span><b>0</b><i>Macht</i></div>
+    <div class="res" id="resWave"><span class="ico">☰</span><b>1</b><i>Welle</i></div>
+  </header>
+
+  <main id="screens">
+
+    <!-- ---------------- KAMPF ---------------- -->
+    <section class="screen is-active" id="screen-battle">
+      <div id="arenaWrap">
+        <canvas id="arena"></canvas>
+        <div id="deadOverlay" class="overlay-msg hidden">
+          <h2>Kern zerstört</h2>
+          <p id="deadText">Die Welle war zu stark.</p>
+          <button class="btn primary" id="btnRetry">Zurück zur Welle</button>
+          <button class="btn ghost" id="btnToForge">Erst aufrüsten</button>
+        </div>
+      </div>
+      <div id="battleBar">
+        <button id="btnFocus" class="focus-btn" disabled>
+          <span class="focus-fill"></span>
+          <span class="focus-label">FOKUS</span>
+        </button>
+        <div id="deckPips"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- SCHMIEDE ---------------- -->
+    <section class="screen" id="screen-forge">
+      <div class="scroller">
+        <div class="fusion-stage">
+          <div class="fslot" id="fslotA" data-slot="0"><span class="hint">Antippen</span></div>
+          <div class="fusion-op">
+            <div class="op-plus">+</div>
+            <div class="op-arrow">↓</div>
+          </div>
+          <div class="fslot" id="fslotB" data-slot="1"><span class="hint">Antippen</span></div>
+        </div>
+        <div class="fusion-preview" id="fusionPreview"></div>
+        <button class="btn primary big" id="btnFuse" disabled>Verschmelzen</button>
+
+        <h3 class="sec-title">Runen schmieden <span class="sub" id="runeHint"></span></h3>
+        <div class="rune-shop" id="runeShop"></div>
+
+        <h3 class="sec-title">Dein Vorrat <span class="sub" id="invCount"></span></h3>
+        <div class="card-grid" id="inventoryGrid"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- KERN ---------------- -->
+    <section class="screen" id="screen-core">
+      <div class="scroller">
+        <h3 class="sec-title">Ausrüstung <span class="sub" id="slotHint"></span></h3>
+        <div class="deck-row" id="deckRow"></div>
+
+        <h3 class="sec-title">Vorrat</h3>
+        <div class="card-grid" id="equipGrid"></div>
+
+        <h3 class="sec-title">Kern verstärken</h3>
+        <div class="upgrade-list" id="upgradeList"></div>
+
+        <h3 class="sec-title">Fortschritt</h3>
+        <div class="stat-list" id="statList"></div>
+        <button class="btn danger ghost" id="btnReset">Spielstand löschen</button>
+      </div>
+    </section>
+
+    <!-- ---------------- KODEX ---------------- -->
+    <section class="screen" id="screen-codex">
+      <div class="scroller">
+        <div class="codex-head">
+          <div>
+            <div class="codex-count" id="codexCount">0</div>
+            <div class="codex-sub">entdeckte Fähigkeiten</div>
+          </div>
+          <div class="codex-legend" id="codexLegend"></div>
+        </div>
+        <div class="card-grid" id="codexGrid"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Tableiste -->
+  <nav id="tabs">
+    <button class="tab is-active" data-screen="battle"><span>⚔</span>Kampf</button>
+    <button class="tab" data-screen="forge"><span>✧</span>Schmiede</button>
+    <button class="tab" data-screen="core"><span>◆</span>Kern</button>
+    <button class="tab" data-screen="codex"><span>📖</span>Kodex</button>
+  </nav>
+</div>
+
+<!-- Detailansicht einer Fähigkeit -->
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-backdrop"></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- Enthüllung nach einer Verschmelzung -->
+<div id="reveal" class="reveal hidden">
+  <canvas id="revealFx"></canvas>
+  <div class="reveal-inner">
+    <div class="reveal-badge" id="revealBadge">NEU ENTDECKT</div>
+    <img class="reveal-glyph" id="revealGlyph" alt="" />
+    <div class="reveal-tier" id="revealTier"></div>
+    <h2 class="reveal-name" id="revealName"></h2>
+    <div class="reveal-comp" id="revealComp"></div>
+    <div class="reveal-stats" id="revealStats"></div>
+    <button class="btn primary big" id="revealOk">Weiter</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
