@@ -709,3 +709,153 @@ img { display: block; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ------------------------------------------------------------------ *
+ * Nachträge: Arena-Knopf, Mengenwahl, Schalter, Meilensteine,
+ * Transzendenz und der Glanz auf seltenen Karten.
+ * ------------------------------------------------------------------ */
+
+.arena-btn {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: rgba(8, 3, 18, 0.55);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.arena-btn.off { opacity: 0.45; }
+.arena-btn:active { transform: scale(0.92); }
+
+/* Mengenwahl im Runenladen */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.seg button {
+  min-width: 52px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--txt-dim);
+}
+.seg button.is-on { background: var(--panel-2); color: var(--txt); }
+
+/* Werkzeugleiste über dem Vorrat */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.toolbar .btn.sm { flex: 0 0 auto; }
+
+/* Schiebeschalter */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--txt-dim);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.toggle .knob {
+  width: 40px; height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  flex: 0 0 auto;
+  transition: background 0.18s ease;
+}
+.toggle .knob::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #d8d2ea;
+  transition: transform 0.18s cubic-bezier(0.3, 1.4, 0.5, 1), background 0.18s ease;
+}
+.toggle.is-on { color: var(--txt); }
+.toggle.is-on .knob { background: linear-gradient(90deg, #7b3bff, #4de3ff); }
+.toggle.is-on .knob::after { transform: translateX(16px); background: #fff; }
+.upg .toggle { padding: 4px; }
+
+/* Meilensteine */
+.mile-list { display: flex; flex-direction: column; gap: 7px; }
+.mile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.mile .mk {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 12px;
+  color: var(--txt-dim);
+  border: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.mile .mb { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.mile .mn { font-size: 13px; font-weight: 800; }
+.mile .md { font-size: 11px; color: var(--txt-dim); }
+.mile .mr { font-size: 11.5px; font-weight: 800; color: var(--accent-2); white-space: nowrap; }
+.mile.done { opacity: 0.55; }
+.mile.done .mk { color: var(--good); border-color: rgba(125, 255, 176, 0.5); }
+.mile.done .mr { color: var(--txt-dim); }
+
+/* Transzendenz */
+.transcend {
+  border: 1px solid rgba(255, 194, 71, 0.35);
+  background: linear-gradient(150deg, rgba(255, 194, 71, 0.10), rgba(176, 107, 255, 0.10));
+  border-radius: var(--r);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tr-head { display: flex; align-items: center; gap: 12px; }
+.tr-star { font-size: 30px; color: var(--gold); line-height: 1; filter: drop-shadow(0 0 12px rgba(255,194,71,0.6)); }
+.tr-n { font-size: 19px; font-weight: 900; letter-spacing: -0.02em; }
+.tr-s { font-size: 11.5px; color: var(--gold); font-weight: 700; }
+.tr-text { font-size: 12.5px; line-height: 1.5; color: var(--txt-dim); }
+.tr-text b { color: var(--txt); }
+
+/* Glanz auf hohen Stufen — läuft langsam, damit es nicht nervt. */
+.card .shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,0.30) 48%, transparent 58%);
+  transform: translateX(-120%);
+  animation: sweep 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+.card.equipped .shine { animation-delay: 0.6s; }
+@keyframes sweep {
+  0%, 62% { transform: translateX(-120%); }
+  86%, 100% { transform: translateX(120%); }
+}

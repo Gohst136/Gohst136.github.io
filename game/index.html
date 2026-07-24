@@ -32,6 +32,7 @@
     <section class="screen is-active" id="screen-battle">
       <div id="arenaWrap">
         <canvas id="arena"></canvas>
+        <button id="soundBtn" class="arena-btn" aria-label="Ton an/aus">🔊</button>
         <div id="deadOverlay" class="overlay-msg hidden">
           <h2>Kern zerstört</h2>
           <p id="deadText">Die Welle war zu stark.</p>
@@ -63,9 +64,20 @@
         <button class="btn primary big" id="btnFuse" disabled>Verschmelzen</button>
 
         <h3 class="sec-title">Runen schmieden <span class="sub" id="runeHint"></span></h3>
+        <div class="seg" id="buyAmount">
+          <button class="is-on" data-n="1">×1</button>
+          <button data-n="5">×5</button>
+          <button data-n="25">×25</button>
+        </div>
         <div class="rune-shop" id="runeShop"></div>
 
         <h3 class="sec-title">Dein Vorrat <span class="sub" id="invCount"></span></h3>
+        <div class="toolbar">
+          <button class="toggle" id="autoMergeToggle">
+            <span class="knob"></span><span class="tl">Auto-Verschmelzen</span>
+          </button>
+          <button class="btn sm" id="btnMergeNow">Duplikate verschmelzen</button>
+        </div>
         <div class="card-grid" id="inventoryGrid"></div>
       </div>
     </section>
@@ -75,6 +87,9 @@
       <div class="scroller">
         <h3 class="sec-title">Ausrüstung <span class="sub" id="slotHint"></span></h3>
         <div class="deck-row" id="deckRow"></div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="btn sm primary" id="btnEquipBest">Stärkste ausrüsten</button>
+        </div>
 
         <h3 class="sec-title">Vorrat</h3>
         <div class="card-grid" id="equipGrid"></div>
@@ -82,8 +97,17 @@
         <h3 class="sec-title">Kern verstärken</h3>
         <div class="upgrade-list" id="upgradeList"></div>
 
+        <h3 class="sec-title">Meilensteine <span class="sub" id="mileCount"></span></h3>
+        <div class="mile-list" id="mileList"></div>
+
+        <h3 class="sec-title">Transzendenz</h3>
+        <div class="transcend" id="transcendBox"></div>
+
         <h3 class="sec-title">Fortschritt</h3>
         <div class="stat-list" id="statList"></div>
+
+        <h3 class="sec-title">Einstellungen</h3>
+        <div class="upgrade-list" id="settingsList"></div>
         <button class="btn danger ghost" id="btnReset">Spielstand löschen</button>
       </div>
     </section>
