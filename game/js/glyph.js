@@ -13,7 +13,7 @@ import { rng, TAU, withAlpha, lighten, darken, clamp } from './util.js';
 import { ELEMENTS } from './data.js';
 
 const cache = new Map();
-const TIER_ORDER = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+const TIER_ORDER = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
 
 export function glyphURL(a, size = 128) {
   const key = a.id + '@' + size;
@@ -86,6 +86,16 @@ const MOTIF_LINES = {
     ctx.beginPath();
     ctx.moveTo(-0.5, -0.1); ctx.lineTo(0.5, -0.1);
     ctx.moveTo(0, -0.58);   ctx.lineTo(0, 0.3);
+  },
+  KR(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(0, -1);         ctx.lineTo(0, 1);
+    ctx.moveTo(-0.58, -0.46);  ctx.lineTo(0.58, -0.46);
+    ctx.moveTo(-0.42, 0.62);   ctx.lineTo(0.42, 0.62);
+  },
+  ZE(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(-0.42, 0.5); ctx.lineTo(0.42, 0.5);
   }
 };
 
@@ -157,6 +167,89 @@ const MOTIF = {
     ctx.arc(-0.08, 0, 0.94, 0, TAU);
     ctx.arc(0.34, -0.06, 0.80, 0, TAU, true);
   },
+  IS(ctx) {                                  /* Schneekristall */
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a0 = (i / 6) * TAU;
+      const cx = Math.cos(a0), cy = Math.sin(a0);
+      const w = 0.11;
+      const px = -Math.sin(a0) * w, py = Math.cos(a0) * w;
+      ctx.moveTo(px, py);
+      ctx.lineTo(cx * 0.98 + px * 0.5, cy * 0.98 + py * 0.5);
+      ctx.lineTo(cx * 0.98 - px * 0.5, cy * 0.98 - py * 0.5);
+      ctx.lineTo(-px, -py);
+      ctx.closePath();
+      /* Seitenäste */
+      const bx = cx * 0.58, by = cy * 0.58;
+      const a1 = a0 + 0.7, a2 = a0 - 0.7;
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + Math.cos(a1) * 0.3, by + Math.sin(a1) * 0.3);
+      ctx.lineTo(bx + Math.cos(a1) * 0.3 - px * 0.5, by + Math.sin(a1) * 0.3 - py * 0.5);
+      ctx.closePath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + Math.cos(a2) * 0.3, by + Math.sin(a2) * 0.3);
+      ctx.lineTo(bx + Math.cos(a2) * 0.3 - px * 0.5, by + Math.sin(a2) * 0.3 - py * 0.5);
+      ctx.closePath();
+    }
+  },
+  GI(ctx) {                                  /* Kolben mit Blase */
+    ctx.beginPath();
+    ctx.moveTo(-0.26, -0.95);
+    ctx.lineTo(0.26, -0.95);
+    ctx.lineTo(0.26, -0.34);
+    ctx.bezierCurveTo(0.86, -0.06, 0.9, 0.66, 0.3, 0.92);
+    ctx.bezierCurveTo(-0.06, 1.06, -0.5, 0.92, -0.72, 0.56);
+    ctx.bezierCurveTo(-0.92, 0.18, -0.66, -0.14, -0.26, -0.34);
+    ctx.closePath();
+    ctx.moveTo(0.06, 0.4);
+    ctx.arc(0.06, 0.4, 0.2, 0, TAU, true);
+  },
+  ZE(ctx) {                                  /* Sanduhr */
+    ctx.beginPath();
+    ctx.moveTo(-0.72, -0.92);
+    ctx.lineTo(0.72, -0.92);
+    ctx.lineTo(0.72, -0.72);
+    ctx.lineTo(0.16, -0.06);
+    ctx.lineTo(0.72, 0.72);
+    ctx.lineTo(0.72, 0.92);
+    ctx.lineTo(-0.72, 0.92);
+    ctx.lineTo(-0.72, 0.72);
+    ctx.lineTo(-0.16, -0.06);
+    ctx.lineTo(-0.72, -0.72);
+    ctx.closePath();
+  },
+  VO(ctx) {                                  /* Ring um ein Nichts */
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.96, 0, TAU);
+    ctx.arc(0, 0, 0.52, 0, TAU, true);
+    for (let i = 0; i < 4; i++) {
+      const a0 = -Math.PI / 4 + (i / 4) * TAU;
+      ctx.moveTo(Math.cos(a0) * 0.4, Math.sin(a0) * 0.4);
+      ctx.lineTo(Math.cos(a0 + 0.16) * 1.02, Math.sin(a0 + 0.16) * 1.02);
+      ctx.lineTo(Math.cos(a0 - 0.16) * 1.02, Math.sin(a0 - 0.16) * 1.02);
+      ctx.closePath();
+    }
+  },
+  KR(ctx) {                                  /* Facettierter Kristall */
+    ctx.beginPath();
+    ctx.moveTo(0, -1);
+    ctx.lineTo(0.58, -0.46);
+    ctx.lineTo(0.42, 0.62);
+    ctx.lineTo(0, 1);
+    ctx.lineTo(-0.42, 0.62);
+    ctx.lineTo(-0.58, -0.46);
+    ctx.closePath();
+  },
+  SN(ctx) {                                  /* Fünfzack mit Strahlen */
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a0 = -Math.PI / 2 + (i / 10) * TAU;
+      const r = i % 2 ? 0.4 : 1;
+      const x = Math.cos(a0) * r, y = Math.sin(a0) * r;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  },
   AR(ctx) {                                  /* Runenkreis */
     ctx.beginPath();
     ctx.arc(0, 0, 0.94, 0, TAU);
@@ -196,7 +289,7 @@ export function drawGlyph(ctx, size, a) {
 
   /* ---------- 2. Strahlenkranz ---------- */
   if (T >= 4) {
-    const rays = 12 + (T - 4) * 6;
+    const rays = Math.min(48, 12 + (T - 4) * 6);
     ctx.save();
     ctx.translate(c, c);
     ctx.rotate(r() * TAU);
@@ -235,10 +328,10 @@ export function drawGlyph(ctx, size, a) {
   }
 
   /* ---------- 4. Rahmenzacken ---------- */
-  const sides = T <= 2 ? 6 : T <= 4 ? 8 : 12;
+  const sides = T <= 2 ? 6 : T <= 4 ? 8 : T <= 7 ? 12 : 16;
   const rFrame = S * 0.40;
   if (T >= 3) {
-    const n = T <= 4 ? 4 : T === 5 ? 6 : 8;
+    const n = T <= 4 ? 4 : T === 5 ? 6 : T <= 7 ? 8 : T <= 9 ? 12 : 16;
     spikes(ctx, c, c, rFrame * 0.98, S * (T >= 6 ? 0.475 : 0.45), n,
            -Math.PI / 2 + (T >= 6 ? 0 : Math.PI / n));
     const g = ctx.createLinearGradient(0, c - rFrame, 0, c + rFrame);
@@ -411,6 +504,16 @@ export function drawGlyph(ctx, size, a) {
   }
 
   /* ---------- 10. Krone der höchsten Stufen ---------- */
+  if (T >= 8) {
+    /* Innerer Zierring für die spätesten Stufen */
+    ctx.beginPath();
+    ctx.arc(c, c, rFrame * 0.62, 0, TAU);
+    ctx.strokeStyle = withAlpha(tierColor, 0.55);
+    ctx.lineWidth = Math.max(1, S * 0.009);
+    ctx.setLineDash([S * 0.02, S * 0.02]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   if (T >= 6) {
     ctx.save();
     ctx.translate(c, c - rFrame * 1.06);

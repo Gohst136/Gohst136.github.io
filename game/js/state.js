@@ -3,8 +3,9 @@
    Funktionen weiter unten, damit Speichern und Neuzeichnen nie vergessen wird. */
 
 import {
-  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, coreHp,
-  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence
+  ELEMENTS, SPECIALS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, coreHp,
+  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence,
+  craftCost, MERCHANT, merchantOffers, isSpecial
 } from './data.js';
 import { ability, baseId, fusionId, canFuse, reforgeCost, levelOfId } from './fusion.js';
 import { saveState, loadState, clearState, uid, clamp } from './util.js';
@@ -31,6 +32,8 @@ function freshState() {
     stats: { kills: 0, fusions: 0, essenceTotal: 0, deepest: 1, waves: 0 },
     seen: { intro: false },
     opt: { autoMerge: false, sound: true },
+    crafted: {},                       /* wie viele Runen je Element schon geschmiedet */
+    merchant: { nextAt: 0, until: 0, seed: 0, bought: {} },
     stars: 0,
     prestiges: 0,
     mile: {},
@@ -63,6 +66,8 @@ export function init() {
     S.stars = raw.stars || 0;
     S.prestiges = raw.prestiges || 0;
     S.lastTick = raw.lastTick || Date.now();
+    S.crafted = Object.assign({}, raw.crafted || {});
+    S.merchant = Object.assign({ nextAt: 0, until: 0, seed: 0, bought: {} }, raw.merchant || {});
     /* Verwaiste Ausrüstungsplätze aufräumen. */
     S.deck = (S.deck || []).map(u => (S.inv.some(e => e.u === u) ? u : null));
   }
@@ -173,17 +178,25 @@ function addToInv(id) {
 export function unlockElement(code) {
   if (S.unlocked.includes(code)) return { ok: false, msg: 'Schon freigeschaltet.' };
   if (nextElementToUnlock() !== code) return { ok: false, msg: 'Erst das vorherige Element freischalten.' };
-  const cost = ELEMENTS[code].unlock;
+  const el = ELEMENTS[code];
+  if (S.bestWave < el.minWave) {
+    return { ok: false, msg: `${el.name} findest du erst ab Welle ${el.minWave}.` };
+  }
+  const cost = el.unlock;
   if (!spend(cost)) return { ok: false, msg: 'Zu wenig Essenz.' };
   S.unlocked.push(code);
   touch('unlock');
   return { ok: true, msg: `${ELEMENTS[code].name} freigeschaltet!` };
 }
 
+/* Was die nächste Rune dieses Elements kostet. */
+export const runeCost = (code) => craftCost(code, S.crafted[code] || 0);
+
 export function craftRune(code) {
   if (!S.unlocked.includes(code)) return { ok: false, msg: 'Noch nicht freigeschaltet.' };
   if (S.inv.length >= INV_LIMIT) return { ok: false, msg: 'Vorrat voll — verwerte etwas.' };
-  if (!spend(ELEMENTS[code].craft)) return { ok: false, msg: 'Zu wenig Essenz.' };
+  if (!spend(runeCost(code))) return { ok: false, msg: 'Zu wenig Essenz.' };
+  S.crafted[code] = (S.crafted[code] || 0) + 1;
   const e = addToInv(baseId(code));
   discover(baseId(code), S.wave);
   touch('inv');
@@ -263,7 +276,7 @@ export function autoMergeAll(limit = 60) {
 /* Sicherheitsnetz: ohne Fähigkeit und ohne Essenz käme man nie wieder in
    Gang — dann gibt es eine Feuerrune aufs Haus. */
 export function ensureNotStuck() {
-  const cheapest = Math.min(...S.unlocked.map(c => ELEMENTS[c].craft));
+  const cheapest = Math.min(...S.unlocked.map(c => runeCost(c)));
   if (S.inv.length === 0 && S.essence < cheapest) {
     S.inv.push({ u: uid(), id: baseId('FE') });
     S.deck[0] = S.inv[0].u;
@@ -351,6 +364,54 @@ export function onDefeat(w) {
 
 export function addKill() { S.stats.kills++; }
 
+/* ---------------- Der Händler ---------------- *
+   Er kommt nach Uhrzeit, nicht nach Spielzeit — dadurch wartet er auch dann
+   auf einen, wenn man das Spiel zwischendurch zumacht. */
+export function merchantTick() {
+  const m = S.merchant;
+  const now = Date.now();
+  if (S.bestWave < MERCHANT.firstAtWave) return null;
+  if (!m.nextAt) { m.nextAt = now + MERCHANT.everySeconds * 1000; persist(); return null; }
+  if (m.until > now) return null;                       /* steht schon da */
+  if (now < m.nextAt) return null;
+
+  m.seed = (Math.random() * 2147483647) | 0 || 1;
+  m.until = now + MERCHANT.staySeconds * 1000;
+  m.nextAt = m.until + MERCHANT.everySeconds * 1000;
+  m.bought = {};
+  persist();
+  return 'arrived';
+}
+
+export const merchantHere = () => S.merchant.until > Date.now();
+export const merchantSecondsLeft = () =>
+  Math.max(0, Math.round((S.merchant.until - Date.now()) / 1000));
+export const merchantSecondsUntil = () =>
+  Math.max(0, Math.round((S.merchant.nextAt - Date.now()) / 1000));
+
+export function merchantStock() {
+  if (!merchantHere()) return [];
+  return merchantOffers(S.merchant.seed, S.bestWave).map((o, i) => ({
+    ...o, index: i, left: Math.max(0, o.stock - (S.merchant.bought[i] || 0))
+  }));
+}
+
+export function buySpecial(index) {
+  if (!merchantHere()) return { ok: false, msg: 'Der Händler ist weitergezogen.' };
+  const offer = merchantStock()[index];
+  if (!offer) return { ok: false, msg: 'Das hat er nicht dabei.' };
+  if (offer.left <= 0) return { ok: false, msg: 'Ausverkauft.' };
+  if (S.inv.length >= INV_LIMIT) return { ok: false, msg: 'Vorrat voll — verwerte etwas.' };
+  if (!spend(offer.price)) return { ok: false, msg: 'Zu wenig Essenz.' };
+  S.merchant.bought[index] = (S.merchant.bought[index] || 0) + 1;
+  const id = baseId(offer.code);
+  const entry = addToInv(id);
+  const isNew = discover(id, S.wave);
+  S.stats.specials = (S.stats.specials || 0) + 1;
+  touch('inv');
+  return { ok: true, entry, code: offer.code, isNew, name: SPECIALS[offer.code].name };
+}
+
 /* ---------------- Meilensteine ---------------- */
 export function checkMilestones() {
   const view = {
@@ -358,7 +419,9 @@ export function checkMilestones() {
     codexN: codexCount(),
     deepest: S.stats.deepest || 1,
     unlocked: S.unlocked.length,
-    kills: S.stats.kills
+    kills: S.stats.kills,
+    specials: S.stats.specials || 0,
+    specialKinds: Object.keys(SPECIALS).filter(c => S.codex[baseId(c)]).length
   };
   const done = [];
   for (const m of MILESTONES) {
@@ -394,6 +457,7 @@ export function transcend() {
   S.wave = 1;
   S.bestWave = 1;
   S.core = { hp: 0, regen: 0, focus: 0, greed: 0 };
+  S.crafted = {};
   const start = [{ u: uid(), id: baseId('FE') }, { u: uid(), id: baseId('WA') }];
   S.inv = start;
   S.deck = [start[0].u, start[1].u];

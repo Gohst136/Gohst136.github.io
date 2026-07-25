@@ -39,6 +39,31 @@ Kodex ist eine echte Sammlung statt einer Liste von Zufällen.
   steht, lässt sich dort jederzeit gegen Essenz nachschmieden. Man verliert
   also nie eine Entdeckung, nur Material.
 
+## Die Wirtschaft
+
+Die Kurve ist mit einem Simulator geeicht, der einen vernünftigen Spieler
+nachspielt (`BAL` in `js/data.js` sind die Regler). Gemessene Marken:
+
+| Welle | erreicht nach | | Element | freigeschaltet nach |
+|---|---|---|---|---|
+| 5 | 1 min | | Blitz | 1 min |
+| 10 | 7 min | | Erde | 6 min |
+| 20 | 36 min | | Wind | 18 min |
+| 30 | 1,4 h | | Licht | 36 min |
+| 40 | 4 h | | Schatten | 1,3 h |
+| 75 | 19 h | | Arkan | 3,8 h |
+
+Zwei Bremsen halten das im Gleichgewicht:
+
+* **Jede weitere Rune desselben Elements kostet mehr** (die 1. Feuerrune 6 ✦,
+  die 41. schon 755 ✦). Reine Kaufkraft bringt einen also nicht durch die
+  Wellen — man muss die Mischung verbessern, nicht die Menge.
+* **Neue Elemente sind an Wellen gebunden**, nicht nur an Essenz. Man kann
+  sich nicht an der Schwierigkeitskurve vorbeikaufen.
+
+Bosse alle fünf Wellen sind die Wände: dort hängt man ein paar Minuten,
+rüstet auf und bricht durch. Genau dafür ist auch der Händler da.
+
 ## Was sonst noch mitspielt
 
 * **Siegel, die mitwachsen.** Das Bild einer Fähigkeit setzt sich aus drei
@@ -53,6 +78,14 @@ Kodex ist eine echte Sammlung statt einer Liste von Zufällen.
 * **Wellen im Hintergrund.** `idle.js` rechnet dieselbe Wellenmathematik im
   Zeitraffer nach, wenn die Arena nicht sichtbar ist. Beim Zurückkommen zeigt
   eine Übersicht, was passiert ist (gedeckelt auf 8 Stunden).
+* **Der Händler** kommt alle fünf Minuten, bleibt zweieinhalb, und hat drei
+  **Fremdrunen** in kleiner Stückzahl dabei — die einzige Quelle dafür:
+  *Eis* (friert Gegner komplett ein), *Gift* (stapelnde Seuche), *Zeit*
+  (setzt Abklingzeiten zurück), *Leere* (bricht Panzer, +110 % gegen Bosse),
+  *Kristall* (durchbohrt Reihen, ×4,4 kritisch) und *Stern* (langsam, aber
+  reißt Löcher in ganze Wellen). Sie verschmelzen wie alles andere.
+* **Elf Seltenheitsstufen** bis *Singularität*, kein Deckel auf der
+  Fusionstiefe — nur die Kosten bremsen.
 * **Gegner-Eigenschaften** ab Welle 6: gepanzert, flink, teilend, zäh — jede
   mit eigenem Aussehen.
 * **Transzendenz** ab Welle 25: Lauf zurücksetzen, dafür Sterne für dauerhaft

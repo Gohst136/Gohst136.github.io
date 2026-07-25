@@ -8,17 +8,15 @@
 
 import {
   enemyHp, enemyDamage, enemyCount, essencePerKill, waveBonus, isBossWave,
-  BOSS_HP_MULT, ENEMY_TYPES, TRAVEL_SECONDS, MAX_OFFLINE_SECONDS
+  bossHpMult, TRAVEL_SECONDS, MAX_OFFLINE_SECONDS
 } from './data.js';
-
-const KOLOSS = ENEMY_TYPES[ENEMY_TYPES.length - 1];
 
 /* Was in einer einzelnen Welle passiert. */
 function wave(w, dps, ctx) {
   const boss = isBossWave(w);
   const n = boss ? Math.max(3, Math.round(enemyCount(w) * 0.5)) : enemyCount(w);
   const hpEach = enemyHp(w);
-  const totalHp = n * hpEach + (boss ? hpEach * BOSS_HP_MULT * KOLOSS.hp : 0);
+  const totalHp = n * hpEach + (boss ? hpEach * bossHpMult(w) : 0);
   const units = n + (boss ? 1 : 0);
 
   const spawnSpan = n * (boss ? 0.56 : 0.42);

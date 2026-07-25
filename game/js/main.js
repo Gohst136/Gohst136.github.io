@@ -110,6 +110,15 @@ function idleTick() {
   const now = Date.now();
   const dt = (now - (G.S.lastTick || now)) / 1000;
   G.S.lastTick = now;
+
+  /* Händler: kommt und geht nach Uhrzeit. */
+  if (G.merchantTick() === 'arrived') {
+    UI.toast('Der Händler ist da — er bleibt nicht lange.', 'good');
+    sfx.discover();
+    buzz([14, 50, 14]);
+  }
+  if (UI.currentScreen() === 'forge') UI.renderMerchant();
+
   if (dt <= 0) return;
   /* Bei kleinen Schritten rechnet die sichtbare Arena selbst; bei großen kann
      sie es gar nicht getan haben (der Browser friert rAF im Hintergrund ein). */

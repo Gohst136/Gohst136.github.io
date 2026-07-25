@@ -15,7 +15,7 @@ export const ELEMENTS = {
     effectName: 'Brand', effectDesc: 'Setzt Ziele in Flammen (Schaden über Zeit).',
     shot: 'orb',
     mod: { dmg: 0.60, cd: 0.00, crit: 0.02, aoe: 0.35, count: 0 },
-    unlock: 0, craft: 8,
+    unlock: 0, minWave: 1, craft: 6,
     lore: 'Der erste Funke. Roh, gierig, unaufhaltsam.'
   },
   WA: {
@@ -24,7 +24,7 @@ export const ELEMENTS = {
     effectName: 'Frost', effectDesc: 'Verlangsamt getroffene Gegner deutlich.',
     shot: 'orb',
     mod: { dmg: 0.18, cd: -0.06, crit: 0.02, aoe: 0.55, count: 0 },
-    unlock: 0, craft: 8,
+    unlock: 0, minWave: 1, craft: 6,
     lore: 'Geduldig. Formt Stein, ohne je die Stimme zu heben.'
   },
   BL: {
@@ -33,7 +33,7 @@ export const ELEMENTS = {
     effectName: 'Schock', effectDesc: 'Springt auf ein weiteres Ziel über.',
     shot: 'bolt',
     mod: { dmg: 0.10, cd: -0.38, crit: 0.14, aoe: 0.10, count: 0.5 },
-    unlock: 60, craft: 14,
+    unlock: 150, minWave: 4, craft: 10,
     lore: 'Zwischen zwei Herzschlägen bereits vorbei.'
   },
   ER: {
@@ -42,7 +42,7 @@ export const ELEMENTS = {
     effectName: 'Splitter', effectDesc: 'Zersplittert und trifft alles im Umkreis.',
     shot: 'shard',
     mod: { dmg: 0.95, cd: 0.48, crit: -0.02, aoe: 0.85, count: 0 },
-    unlock: 150, craft: 22,
+    unlock: 900, minWave: 8, craft: 17,
     lore: 'Was die Erde nimmt, gibt sie niemals zurück.'
   },
   WI: {
@@ -51,7 +51,7 @@ export const ELEMENTS = {
     effectName: 'Schnitt', effectDesc: 'Durchdringt Gegner, statt zu zerplatzen.',
     shot: 'blade',
     mod: { dmg: -0.10, cd: -0.30, crit: 0.08, aoe: -0.10, count: 1.0 },
-    unlock: 320, craft: 30,
+    unlock: 4500, minWave: 13, craft: 26,
     lore: 'Tausend Klingen, von denen keine ein Gewicht hat.'
   },
   LI: {
@@ -60,7 +60,7 @@ export const ELEMENTS = {
     effectName: 'Sengen', effectDesc: 'Erhöhter Kritischer Schaden, durchbohrt Reihen.',
     shot: 'beam',
     mod: { dmg: 0.30, cd: -0.10, crit: 0.16, aoe: 0.15, count: 0 },
-    unlock: 650, craft: 45,
+    unlock: 22000, minWave: 19, craft: 40,
     lore: 'Nichts blendet so zuverlässig wie die Wahrheit.'
   },
   SC: {
@@ -69,7 +69,7 @@ export const ELEMENTS = {
     effectName: 'Zehren', effectDesc: 'Ein Teil des Schadens heilt deinen Kern.',
     shot: 'wisp',
     mod: { dmg: 0.48, cd: -0.05, crit: 0.10, aoe: 0.10, count: 0 },
-    unlock: 1200, craft: 65,
+    unlock: 110000, minWave: 26, craft: 62,
     lore: 'Er wartet nicht auf die Nacht. Er bringt sie mit.'
   },
   AR: {
@@ -78,10 +78,78 @@ export const ELEMENTS = {
     effectName: 'Echo', effectDesc: 'Chance, den gesamten Angriff zu wiederholen.',
     shot: 'rune',
     mod: { dmg: 0.32, cd: -0.16, crit: 0.09, aoe: 0.30, count: 0.3 },
-    unlock: 2200, craft: 90,
+    unlock: 600000, minWave: 34, craft: 95,
     lore: 'Die Sprache, in der die Welt geschrieben wurde.'
   }
 };
+
+/* ------------------------------------------------------------------ *
+ * FREMDRUNEN
+ * Gibt es nirgends zu kaufen — nur beim Händler, der alle paar Minuten
+ * vorbeikommt und jedes Stück nur ein- oder zweimal dabei hat. Sie
+ * verschmelzen wie alles andere, bringen aber Mechaniken mit, die kein
+ * Grundelement hat.
+ * ------------------------------------------------------------------ */
+export const SPECIALS = {
+  IS: {
+    code: 'IS', name: 'Eis', order: 8, special: true,
+    colors: ['#dff6ff', '#4aa8ff'], effect: 'starre',
+    effectName: 'Starre', effectDesc: 'Friert Gegner für einen Moment völlig ein.',
+    shot: 'orb',
+    mod: { dmg: 0.30, cd: 0.06, crit: 0.04, aoe: 0.45, count: 0 },
+    craft: 900, tier: 1,
+    lore: 'Kälte, die nicht nur bremst, sondern beschließt, dass Bewegung aufhört.'
+  },
+  GI: {
+    code: 'GI', name: 'Gift', order: 9, special: true,
+    colors: ['#b6ff3a', '#2f7a1f'], effect: 'seuche',
+    effectName: 'Seuche', effectDesc: 'Vergiftung stapelt sich und wird immer stärker.',
+    shot: 'wisp',
+    mod: { dmg: 0.15, cd: -0.18, crit: 0.05, aoe: 0.25, count: 0.2 },
+    craft: 900, tier: 1,
+    lore: 'Sie tötet nicht schnell. Sie tötet zuverlässig.'
+  },
+  ZE: {
+    code: 'ZE', name: 'Zeit', order: 10, special: true,
+    colors: ['#ffe9a8', '#7de3ff'], effect: 'raffung',
+    effectName: 'Raffung', effectDesc: 'Chance, die Abklingzeit sofort zurückzusetzen.',
+    shot: 'rune',
+    mod: { dmg: 0.12, cd: -0.55, crit: 0.08, aoe: 0.05, count: 0.2 },
+    craft: 1400, tier: 2,
+    lore: 'Zwei Schläge in derselben Sekunde. Frag nicht, welcher zuerst kam.'
+  },
+  VO: {
+    code: 'VO', name: 'Leere', order: 11, special: true,
+    colors: ['#8a6bff', '#120426'], effect: 'entwehr',
+    effectName: 'Entwehr', effectDesc: 'Ignoriert Panzerung und trifft Bosse härter.',
+    shot: 'beam',
+    mod: { dmg: 0.75, cd: 0.02, crit: 0.10, aoe: 0.15, count: 0 },
+    craft: 1400, tier: 2,
+    lore: 'Wo nichts ist, kann sich auch nichts dazwischenstellen.'
+  },
+  KR: {
+    code: 'KR', name: 'Kristall', order: 12, special: true,
+    colors: ['#ffd8f8', '#8affe6'], effect: 'brechung',
+    effectName: 'Brechung', effectDesc: 'Durchbohrt Reihen und trifft kritisch viel härter.',
+    shot: 'blade',
+    mod: { dmg: 0.25, cd: -0.12, crit: 0.22, aoe: 0.10, count: 0.6 },
+    craft: 2200, tier: 3,
+    lore: 'Ein Schnitt, siebenfach gespiegelt.'
+  },
+  SN: {
+    code: 'SN', name: 'Stern', order: 13, special: true,
+    colors: ['#fff6d0', '#ff9d2f'], effect: 'nova',
+    effectName: 'Nova', effectDesc: 'Langsam, aber jeder Treffer reißt ein Loch in die Welle.',
+    shot: 'orb',
+    mod: { dmg: 1.05, cd: 0.38, crit: 0.06, aoe: 1.35, count: 0 },
+    craft: 2200, tier: 3,
+    lore: 'Etwas, das einmal eine Sonne war, passt jetzt in deine Hand.'
+  }
+};
+
+Object.assign(ELEMENTS, SPECIALS);
+export const SPECIAL_CODES = Object.keys(SPECIALS);
+export const isSpecial = (code) => !!(ELEMENTS[code] && ELEMENTS[code].special);
 
 export const ELEMENT_CODES = Object.keys(ELEMENTS).sort(
   (a, b) => ELEMENTS[a].order - ELEMENTS[b].order
@@ -94,13 +162,17 @@ export const UNLOCK_ORDER = ['FE', 'WA', 'BL', 'ER', 'WI', 'LI', 'SC', 'AR'];
  * SELTENHEITS-STUFEN — abgeleitet aus der Anzahl verschmolzener Runen
  * ------------------------------------------------------------------ */
 export const TIERS = [
-  { min: 1,  max: 1,   name: 'Gewöhnlich', roman: 'I',   color: '#9aa4b8', glow: 0.15, prefix: '' },
-  { min: 2,  max: 2,   name: 'Selten',     roman: 'II',  color: '#4fa8ff', glow: 0.30, prefix: '' },
-  { min: 3,  max: 4,   name: 'Episch',     roman: 'III', color: '#b06bff', glow: 0.48, prefix: '' },
-  { min: 5,  max: 8,   name: 'Legendär',   roman: 'IV',  color: '#ffc247', glow: 0.66, prefix: '' },
-  { min: 9,  max: 14,  name: 'Mythisch',   roman: 'V',   color: '#ff5b8a', glow: 0.82, prefix: 'Ur-' },
-  { min: 15, max: 24,  name: 'Kosmisch',   roman: 'VI',  color: '#42f5e0', glow: 0.94, prefix: 'Äon-' },
-  { min: 25, max: 999, name: 'Göttlich',   roman: 'VII', color: '#ffffff', glow: 1.00, prefix: 'Omega-' }
+  { min: 1,   max: 1,    name: 'Gewöhnlich',   roman: 'I',    color: '#9aa4b8', glow: 0.15, prefix: '' },
+  { min: 2,   max: 2,    name: 'Selten',       roman: 'II',   color: '#4fa8ff', glow: 0.28, prefix: '' },
+  { min: 3,   max: 4,    name: 'Episch',       roman: 'III',  color: '#b06bff', glow: 0.42, prefix: '' },
+  { min: 5,   max: 8,    name: 'Legendär',     roman: 'IV',   color: '#ffc247', glow: 0.56, prefix: '' },
+  { min: 9,   max: 14,   name: 'Mythisch',     roman: 'V',    color: '#ff5b8a', glow: 0.68, prefix: 'Ur-' },
+  { min: 15,  max: 24,   name: 'Kosmisch',     roman: 'VI',   color: '#42f5e0', glow: 0.78, prefix: 'Äon-' },
+  { min: 25,  max: 39,   name: 'Göttlich',     roman: 'VII',  color: '#ffffff', glow: 0.86, prefix: 'Omega-' },
+  { min: 40,  max: 64,   name: 'Titanisch',    roman: 'VIII', color: '#ffa03a', glow: 0.91, prefix: 'Titan-' },
+  { min: 65,  max: 104,  name: 'Urzeitlich',   roman: 'IX',   color: '#a6ff4d', glow: 0.95, prefix: 'Nova-' },
+  { min: 105, max: 174,  name: 'Ewig',         roman: 'X',    color: '#ff4de3', glow: 0.98, prefix: 'Ewig-' },
+  { min: 175, max: 9999, name: 'Singularität', roman: 'XI',   color: '#e8e2ff', glow: 1.00, prefix: 'Null-' }
 ];
 
 export function tierOf(level) {
@@ -154,7 +226,13 @@ export const PREFIX = {
   WI: ['Zephyr', 'Orkan', 'Klingen', 'Schall', 'Vakuum', 'Sichel'],
   LI: ['Prisma', 'Solar', 'Aurora', 'Heiligen', 'Strahlen', 'Nova'],
   SC: ['Nacht', 'Void', 'Leeren', 'Wraith', 'Blut', 'Eklipsen'],
-  AR: ['Runen', 'Äther', 'Zeit', 'Chaos', 'Sigil', 'Omega']
+  AR: ['Runen', 'Äther', 'Zeit', 'Chaos', 'Sigil', 'Omega'],
+  IS: ['Frost', 'Gletscher', 'Rime', 'Eis', 'Polar', 'Starre'],
+  GI: ['Seuchen', 'Mias', 'Venom', 'Fäulnis', 'Spore', 'Toxin'],
+  ZE: ['Chronos', 'Sanduhr', 'Stunden', 'Äon', 'Takt', 'Uhrwerk'],
+  VO: ['Leeren', 'Abgrund', 'Nihil', 'Schlund', 'Un', 'Hohl'],
+  KR: ['Prismen', 'Kristall', 'Facetten', 'Splitter', 'Glas', 'Spiegel'],
+  SN: ['Stern', 'Supernova', 'Helios', 'Korona', 'Sonnen', 'Quasar']
 };
 
 export const CORE = {
@@ -165,7 +243,13 @@ export const CORE = {
   WI: ['sturm', 'schneide', 'wirbel', 'böe'],
   LI: ['strahl', 'glanz', 'halo', 'krone'],
   SC: ['schlund', 'klaue', 'riss', 'schleier'],
-  AR: ['siegel', 'formel', 'kreis', 'echo']
+  AR: ['siegel', 'formel', 'kreis', 'echo'],
+  IS: ['starre', 'schauer', 'lanze', 'grab'],
+  GI: ['schwaden', 'biss', 'blüte', 'fäule'],
+  ZE: ['schleife', 'takt', 'stunde', 'sprung'],
+  VO: ['schlund', 'leere', 'riss', 'stille'],
+  KR: ['facette', 'prisma', 'scherbe', 'glanz'],
+  SN: ['nova', 'korona', 'brand', 'krone']
 };
 
 /* ------------------------------------------------------------------ *
@@ -201,26 +285,95 @@ export const BOSS_NAMES = [
   'Weltenkeim', 'Das Letzte Auge'
 ];
 
-/* Wellen-Mathematik ------------------------------------------------- */
+/* Wellen-Mathematik ------------------------------------------------- *
+   Alle Regler an einem Ort. Die Zahlen sind mit einem Simulator geeicht
+   (siehe README): Welle 10 nach gut 10 Minuten, Welle 20 nach etwa einer
+   Stunde, danach immer gemächlicher — so bleibt jede Welle ein Ziel und
+   nicht bloß eine Zwischenstation. */
+export const BAL = {
+  hpBase: 26, hpExp: 1.90, hpGrowth: 1.045,
+  countBase: 4, countPer: 0.85, countMax: 26,
+  dmgBase: 6, dmgMul: 2.4, dmgExp: 1.30,
+  killBase: 2, killMul: 0.9, killExp: 1.05,
+  bonusBase: 20, bonusMul: 8, bonusExp: 1.15,
+  /* Jede weitere Rune desselben Elements kostet mehr — das ist die Bremse,
+     die verhindert, dass man die Schwierigkeitskurve einfach überkauft. */
+  craftDiv: 5, craftExp: 2.2,
+  /* Wie stark eine Fähigkeit mit ihrer Runenzahl wächst. */
+  powExp: 1.22, variety: 0.11
+};
+
 export const isBossWave = (w) => w % 5 === 0;
 
 export function enemyHp(wave) {
-  return Math.round(22 * Math.pow(wave, 1.5) * Math.pow(1.07, wave) + 16);
+  return Math.round(BAL.hpBase * Math.pow(wave, BAL.hpExp) * Math.pow(BAL.hpGrowth, wave) + 12);
 }
 export function enemyDamage(wave) {
-  return Math.round(6 + wave * 2.6 + Math.pow(wave, 1.35));
+  return Math.round(BAL.dmgBase + BAL.dmgMul * Math.pow(wave, BAL.dmgExp));
 }
 export function enemyCount(wave) {
-  return Math.min(26, 4 + Math.floor(wave * 0.9));
+  return Math.min(BAL.countMax, BAL.countBase + Math.floor(wave * BAL.countPer));
 }
 export function essencePerKill(wave) {
-  return 3 + wave * 1.6;
+  return BAL.killBase + BAL.killMul * Math.pow(wave, BAL.killExp);
 }
 export function waveBonus(wave) {
-  return Math.round(18 + wave * 9 + Math.pow(wave, 1.5));
+  return Math.round(BAL.bonusBase + BAL.bonusMul * Math.pow(wave, BAL.bonusExp));
 }
-/* Bosse sollen eine Wand sein, an der man einmal aufrüstet — keine Mauer. */
-export const BOSS_HP_MULT = 4;
+/* Kosten der n-ten Rune eines Elements (n = wie viele man davon schon
+   geschmiedet hat). */
+export function craftCost(code, made) {
+  const base = ELEMENTS[code].craft;
+  return Math.ceil(base * Math.pow(1 + made / BAL.craftDiv, BAL.craftExp));
+}
+/* Bosse sollen eine Wand sein, an der man einmal aufrüstet — keine Mauer.
+   Früh mild, später deutlich fordernder. */
+export const bossHpMult = (wave) => 9 + wave * 0.18;
+
+/* ------------------------------------------------------------------ *
+ * DER HÄNDLER
+ * Kommt regelmäßig vorbei, bleibt kurz, hat wenig dabei. Wer gerade kein
+ * Geld hat, sieht ihn ziehen — das ist Absicht.
+ * ------------------------------------------------------------------ */
+export const MERCHANT = {
+  everySeconds: 300,      /* alle fünf Minuten Spielzeit */
+  staySeconds: 150,       /* zweieinhalb Minuten bleibt er */
+  offers: 3,
+  firstAtWave: 3          /* vorher hätte man nichts davon */
+};
+
+/* Welche Güteklasse hat er dabei? Die guten Sachen erst später. */
+export function merchantTierCap(bestWave) {
+  if (bestWave >= 22) return 3;
+  if (bestWave >= 12) return 2;
+  return 1;
+}
+
+/* Die Auslage ergibt sich aus dem Startwert — dadurch bleibt sie stabil,
+   solange er da ist, auch über einen Neustart der App hinweg. */
+export function merchantOffers(seed, bestWave) {
+  let a = (seed >>> 0) || 1;
+  const rnd = () => {
+    a ^= a << 13; a >>>= 0; a ^= a >> 17; a ^= a << 5; a >>>= 0;
+    return a / 4294967296;
+  };
+  const cap = merchantTierCap(bestWave);
+  const pool = SPECIAL_CODES.filter(c => SPECIALS[c].tier <= cap);
+  const want = Math.min(MERCHANT.offers, pool.length);
+  const out = [];
+  while (out.length < want) {
+    const code = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+    out.push({ code, stock: 1 + Math.floor(rnd() * 2), price: specialPrice(code, bestWave) });
+  }
+  return out;
+}
+
+export function specialPrice(code, bestWave) {
+  const t = SPECIALS[code] ? SPECIALS[code].tier : 1;
+  const w = Math.max(1, bestWave);
+  return Math.round((180 + 260 * t) * (1 + Math.pow(w, 1.65) / 9));
+}
+
 export function coreHp(level) {
   return Math.round(220 * Math.pow(1.18, level));
 }
@@ -283,7 +436,10 @@ export const MILESTONES = [
   { id: 'd32',   name: 'Zweiunddreißig',     desc: 'Eine Fusion aus 32 Runen',    test: s => s.deepest >= 32,     reward: 20000 },
   { id: 'all8',  name: 'Vollständig',        desc: 'Alle acht Elemente besitzen', test: s => s.unlocked >= 8,     reward: 1200 },
   { id: 'k500',  name: 'Fünfhundert',        desc: '500 Gegner besiegt',          test: s => s.kills >= 500,      reward: 900 },
-  { id: 'k5000', name: 'Fünftausend',        desc: '5000 Gegner besiegt',         test: s => s.kills >= 5000,     reward: 12000 }
+  { id: 'k5000', name: 'Fünftausend',        desc: '5000 Gegner besiegt',         test: s => s.kills >= 5000,     reward: 12000 },
+  { id: 'sp1',   name: 'Erster Handel',      desc: 'Eine Fremdrune vom Händler',  test: s => s.specials >= 1,     reward: 500 },
+  { id: 'sp6',   name: 'Stammkunde',         desc: 'Sechs Fremdrunen erstanden',  test: s => s.specials >= 6,     reward: 6000 },
+  { id: 'spAll', name: 'Alle Fremden',       desc: 'Alle sechs Arten entdeckt',   test: s => s.specialKinds >= 6, reward: 30000 }
 ];
 
 /* ------------------------------------------------------------------ *
