@@ -2,7 +2,7 @@
    im Flugmodus. Bei jeder Änderung die Version hochzählen — dann räumt der
    Worker den alten Stand beim nächsten Start weg. */
 
-const VERSION = 'aetherforge-v1';
+const VERSION = 'aetherforge-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,8 @@ const ASSETS = [
   './js/glyph.js',
   './js/data.js',
   './js/util.js',
+  './js/idle.js',
+  './js/audio.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'

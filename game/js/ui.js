@@ -2,7 +2,8 @@
    Enthüllungs-Animation nach jeder Verschmelzung. */
 
 import {
-  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, TIERS
+  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, TIERS,
+  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence, AFFIXES
 } from './data.js';
 import {
   ability, canFuse, reforgeCost, describe, composition
@@ -10,6 +11,7 @@ import {
 import { glyphURL } from './glyph.js';
 import * as G from './state.js';
 import { $, $$, fmt, withAlpha, clamp, buzz, TAU, rng } from './util.js';
+import { sfx, setEnabled as setSound } from './audio.js';
 
 /* ------------------------------------------------------------------ *
  * Kleinkram
@@ -70,6 +72,14 @@ function abilityCard(a, opt = {}) {
     `<span class="ctier" style="color:${a.tier.color}">${a.tier.roman}</span>` +
     `<span class="cpow">⚡${fmt(a.power)}</span>`;
   el.appendChild(meta);
+
+  /* Ab Legendär bekommt die Karte einen langsam wandernden Glanz. */
+  if (['IV', 'V', 'VI', 'VII'].includes(a.tier.roman)) {
+    const shine = document.createElement('span');
+    shine.className = 'shine';
+    el.appendChild(shine);
+    el.style.borderColor = withAlpha(a.tier.color, 0.45);
+  }
   return el;
 }
 
@@ -89,7 +99,8 @@ const ui = {
   screen: 'battle',
   sel: [null, null],        /* ausgewählte Inventar-uids für die Fusion */
   arena: null,
-  lastEssence: 0
+  lastEssence: 0,
+  buyAmount: 1
 };
 
 export function setArena(a) { ui.arena = a; }
@@ -230,25 +241,41 @@ function renderRuneShop() {
   const host = $('#runeShop');
   host.innerHTML = '';
   const next = G.nextElementToUnlock();
+  const n = ui.buyAmount;
+
   for (const code of UNLOCK_ORDER) {
     const el = ELEMENTS[code];
     const owned = G.S.unlocked.includes(code);
+    const cost = owned ? el.craft * n : el.unlock;
+    const affordable = G.S.essence >= cost;
     const btn = document.createElement('button');
-    const affordable = owned ? G.S.essence >= el.craft : G.S.essence >= el.unlock;
-    btn.className = 'rune' + (owned ? '' : ' locked') + (affordable && (owned || code === next) ? '' : ' cant');
+    btn.className = 'rune' + (owned ? '' : ' locked') +
+                    (affordable && (owned || code === next) ? '' : ' cant');
     btn.innerHTML =
       `<span class="dot" style="background:linear-gradient(135deg,${el.colors[0]},${el.colors[1]})"></span>` +
       `<span><span class="rn">${el.name}</span><br>` +
-      `<span class="rc">${owned ? el.craft + ' ✦' : (code === next ? 'Freischalten ' + el.unlock + ' ✦' : 'gesperrt')}</span></span>`;
+      `<span class="rc">${owned ? fmt(cost) + ' ✦' + (n > 1 ? ' ×' + n : '')
+                                : (code === next ? 'Frei ab ' + fmt(cost) + ' ✦' : 'gesperrt')}</span></span>`;
     btn.addEventListener('click', () => {
       if (owned) {
-        const r = G.craftRune(code);
-        if (r.ok) { buzz(8); toast(`${el.name}-Rune geschmiedet`, 'good'); }
-        else toast(r.msg, 'bad');
+        let made = 0;
+        for (let i = 0; i < n; i++) {
+          if (!G.craftRune(code).ok) break;
+          made++;
+        }
+        if (made) {
+          buzz(8); sfx.buy();
+          toast(`${made}× ${el.name}-Rune geschmiedet`, 'good');
+          maybeAutoMerge();
+        } else {
+          sfx.error();
+          toast(G.S.inv.length >= G.INV_LIMIT ? 'Vorrat voll — verwerte etwas.' : 'Zu wenig Essenz.', 'bad');
+        }
       } else if (code === next) {
         const r = G.unlockElement(code);
         toast(r.msg, r.ok ? 'good' : 'bad');
-        if (r.ok) buzz([10, 40, 20]);
+        if (r.ok) { buzz([10, 40, 20]); sfx.discover(); }
+        else sfx.error();
       } else {
         toast('Schalte erst ' + ELEMENTS[next].name + ' frei.', 'bad');
       }
@@ -256,6 +283,24 @@ function renderRuneShop() {
     host.appendChild(btn);
   }
   $('#runeHint').textContent = 'Rohmaterial jeder Fusion';
+
+  $$('#buyAmount button').forEach(b => {
+    b.classList.toggle('is-on', Number(b.dataset.n) === ui.buyAmount);
+  });
+
+  const tgl = $('#autoMergeToggle');
+  if (tgl) tgl.classList.toggle('is-on', !!G.S.opt.autoMerge);
+}
+
+/* Wenn Auto-Verschmelzen an ist, gleich nach jedem Zuwachs aufräumen. */
+export function maybeAutoMerge() {
+  if (!G.S.opt.autoMerge) return null;
+  const r = G.autoMergeAll();
+  if (r.merged) {
+    sfx.fuse();
+    toast(`${r.merged}× verschmolzen${r.discovered ? ` · ${r.discovered} neu entdeckt` : ''}`, 'good');
+  }
+  return r;
 }
 
 function renderInventory() {
@@ -300,6 +345,76 @@ export function initUI() {
   $('#fslotA').addEventListener('click', () => { ui.sel[0] = null; renderForge(); });
   $('#fslotB').addEventListener('click', () => { ui.sel[1] = null; renderForge(); });
   $('.sheet-backdrop').addEventListener('click', closeSheet);
+
+  $$('#buyAmount button').forEach(b => b.addEventListener('click', () => {
+    ui.buyAmount = Number(b.dataset.n) || 1;
+    sfx.ui();
+    renderForge();
+  }));
+
+  $('#autoMergeToggle').addEventListener('click', () => {
+    G.S.opt.autoMerge = !G.S.opt.autoMerge;
+    G.persist();
+    sfx.ui();
+    if (G.S.opt.autoMerge) maybeAutoMerge();
+    renderForge();
+    toast(G.S.opt.autoMerge ? 'Auto-Verschmelzen an' : 'Auto-Verschmelzen aus');
+  });
+
+  $('#btnMergeNow').addEventListener('click', () => {
+    const r = G.autoMergeAll();
+    if (r.merged) {
+      sfx.fuse(); buzz(12);
+      toast(`${r.merged}× verschmolzen${r.discovered ? ` · ${r.discovered} neu` : ''}`, 'good');
+    } else {
+      sfx.error();
+      toast('Keine zwei gleichen Fähigkeiten im Vorrat.', 'bad');
+    }
+  });
+
+  $('#btnEquipBest').addEventListener('click', () => {
+    const r = G.equipBest();
+    sfx.buy();
+    toast(r.changed ? 'Stärkste Fähigkeiten ausgerüstet.' : 'Du kämpfst schon mit dem Besten.',
+          r.changed ? 'good' : '');
+  });
+
+  $('#soundBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    G.S.opt.sound = !G.S.opt.sound;
+    G.persist();
+    setSound(G.S.opt.sound);
+    renderSoundBtn();
+    if (G.S.opt.sound) sfx.ui();
+  });
+  renderSoundBtn();
+}
+
+/* ------------------------------------------------------------------ *
+ * Willkommen zurück — was in der Abwesenheit passiert ist
+ * ------------------------------------------------------------------ */
+export function showWelcomeBack(res, minutes) {
+  const body = $('#sheetBody');
+  const zeit = minutes >= 60
+    ? `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`
+    : `${Math.round(minutes)} min`;
+  body.innerHTML =
+    '<div class="sheet-grip"></div>' +
+    '<div class="sheet-title" style="margin-bottom:6px">Willkommen zurück</div>' +
+    `<div style="color:var(--txt-dim);font-size:13px;margin-bottom:14px">` +
+    `Deine Fähigkeiten haben ${zeit} ohne dich weitergekämpft.</div>` +
+    '<div class="statgrid">' +
+      `<div class="sg"><div class="k">Essenz</div><div class="v" style="color:var(--accent-2)">+${fmt(res.essence)}</div></div>` +
+      `<div class="sg"><div class="k">Wellen</div><div class="v">+${res.waves}</div></div>` +
+      `<div class="sg"><div class="k">Gegner</div><div class="v">${fmt(Math.round(res.kills))}</div></div>` +
+      `<div class="sg"><div class="k">Jetzt bei</div><div class="v">Welle ${res.wave}</div></div>` +
+    '</div>' +
+    (res.stalled
+      ? '<p style="font-size:12px;color:var(--txt-dim);margin-top:12px">Irgendwann ging es nicht mehr weiter — dort wartet eine Welle, für die du erst aufrüsten musst.</p>'
+      : '') +
+    '<div class="sheet-actions"><button class="btn primary big" id="wbOk">Weiter</button></div>';
+  $('#sheet').classList.remove('hidden');
+  $('#wbOk').addEventListener('click', closeSheet);
 }
 
 /* ------------------------------------------------------------------ *
@@ -309,7 +424,10 @@ export function renderCore() {
   renderDeck();
   renderEquipGrid();
   renderUpgrades();
+  renderMilestones();
+  renderTranscend();
   renderStats();
+  renderSettings();
 }
 
 function renderDeck() {
@@ -416,8 +534,125 @@ function renderStats() {
     [fmt(Math.round(cs.maxHp)), 'Kern-Leben'],
     [fmt(Math.round(s.essenceTotal)), 'Essenz gesamt']
   ];
+  if (G.S.stars > 0) {
+    rows.unshift([
+      '★ ' + G.S.stars,
+      `+${Math.round((starDamage(G.S.stars) - 1) * 100)} % Schaden`
+    ]);
+  }
   host.innerHTML = rows.map(([v, l]) =>
     `<div class="stat"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
+}
+
+/* ------------------------------------------------------------------ *
+ * Meilensteine
+ * ------------------------------------------------------------------ */
+function renderMilestones() {
+  const host = $('#mileList');
+  if (!host) return;
+  host.innerHTML = '';
+  const prog = G.milestoneProgress();
+  $('#mileCount').textContent = `${prog.done} / ${prog.total}`;
+
+  /* Erledigte oben ausblenden, aber die nächsten drei offenen zeigen —
+     eine Liste aus 14 Haken motiviert niemanden. */
+  const open = MILESTONES.filter(m => !G.S.mile[m.id]).slice(0, 3);
+  const doneRecent = MILESTONES.filter(m => G.S.mile[m.id]).slice(-2);
+
+  for (const m of [...open, ...doneRecent]) {
+    const ok = !!G.S.mile[m.id];
+    const row = document.createElement('div');
+    row.className = 'mile' + (ok ? ' done' : '');
+    row.innerHTML =
+      `<span class="mk">${ok ? '✓' : '○'}</span>` +
+      `<span class="mb"><span class="mn">${m.name}</span>` +
+      `<span class="md">${m.desc}</span></span>` +
+      `<span class="mr">${ok ? 'erledigt' : '+' + fmt(m.reward) + ' ✦'}</span>`;
+    host.appendChild(row);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Transzendenz
+ * ------------------------------------------------------------------ */
+function renderTranscend() {
+  const box = $('#transcendBox');
+  if (!box) return;
+  const can = G.canTranscend();
+  const gain = G.transcendGain();
+  const stars = G.S.stars;
+
+  box.innerHTML =
+    `<div class="tr-head"><span class="tr-star">★</span>` +
+    `<div><div class="tr-n">${stars} Stern${stars === 1 ? '' : 'e'}</div>` +
+    `<div class="tr-s">+${Math.round((starDamage(stars) - 1) * 100)} % Schaden · ` +
+    `+${Math.round((starEssence(stars) - 1) * 100)} % Essenz</div></div></div>` +
+    `<p class="tr-text">Fängt den Lauf von vorn an: Wellen, Essenz, Vorrat und ` +
+    `Kern-Upgrades werden zurückgesetzt. <b>Kodex und freigeschaltete Elemente ` +
+    `bleiben</b> — der nächste Anlauf geht deshalb viel schneller.</p>`;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn big ' + (can && gain > 0 ? 'primary' : '');
+  btn.disabled = !can || gain <= 0;
+  btn.textContent = !can
+    ? `Ab Welle ${TRANSCEND_WAVE} möglich`
+    : gain > 0 ? `Transzendieren · +${gain} ★` : 'Komm weiter als zuletzt';
+  btn.addEventListener('click', () => {
+    if (!confirm(`Transzendieren? Du bekommst ${gain} Stern${gain === 1 ? '' : 'e'} ` +
+                 `und fängst bei Welle 1 wieder an. Kodex und Elemente bleiben.`)) return;
+    const r = G.transcend();
+    if (r.ok) {
+      sfx.discover();
+      buzz([20, 60, 20, 60, 40]);
+      toast(`Transzendiert — ${r.stars} ★ insgesamt`, 'good');
+    } else toast(r.msg, 'bad');
+  });
+  box.appendChild(btn);
+}
+
+/* ------------------------------------------------------------------ *
+ * Einstellungen
+ * ------------------------------------------------------------------ */
+function renderSettings() {
+  const host = $('#settingsList');
+  if (!host) return;
+  host.innerHTML = '';
+  const rows = [
+    { key: 'autoMerge', icon: '⇄', name: 'Auto-Verschmelzen',
+      desc: 'Gleiche Fähigkeiten im Vorrat legen sich von selbst zusammen. Ausgerüstete bleiben unangetastet.' },
+    { key: 'sound', icon: '🔊', name: 'Ton',
+      desc: 'Kurze Klänge für Treffer, Fusionen und Bosse.' }
+  ];
+  for (const r of rows) {
+    const on = !!G.S.opt[r.key];
+    const row = document.createElement('div');
+    row.className = 'upg';
+    row.innerHTML =
+      `<div class="uico">${r.icon}</div>` +
+      `<div class="ubody"><div class="un">${r.name}</div><div class="ud">${r.desc}</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'toggle' + (on ? ' is-on' : '');
+    btn.innerHTML = '<span class="knob"></span>';
+    btn.addEventListener('click', () => {
+      G.S.opt[r.key] = !G.S.opt[r.key];
+      G.persist();
+      if (r.key === 'sound') { setSound(G.S.opt[r.key]); if (G.S.opt[r.key]) sfx.ui(); }
+      if (r.key === 'autoMerge' && G.S.opt[r.key]) maybeAutoMerge();
+      renderSettings();
+      renderSoundBtn();
+      if (currentScreen() === 'forge') renderForge();
+    });
+    row.appendChild(btn);
+    host.appendChild(row);
+  }
+}
+
+export function renderSoundBtn() {
+  const b = $('#soundBtn');
+  if (b) {
+    b.textContent = G.S.opt.sound ? '🔊' : '🔇';
+    b.classList.toggle('off', !G.S.opt.sound);
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -670,9 +905,9 @@ export function showIntro(onClose) {
     '<div class="sheet-grip"></div>' +
     '<div class="sheet-title" style="margin-bottom:8px">Willkommen in der Aetherforge</div>' +
     '<div style="font-size:14px;line-height:1.55;color:var(--txt-dim);display:flex;flex-direction:column;gap:10px">' +
-      '<div><b style="color:var(--txt)">1 · Kämpfen.</b> Deine ausgerüsteten Fähigkeiten feuern von allein. Jeder Sieg bringt Essenz ✦.</div>' +
+      '<div><b style="color:var(--txt)">1 · Kämpfen.</b> Deine ausgerüsteten Fähigkeiten feuern von allein. Jeder Sieg bringt Essenz ✦ — auch dann, wenn du gerade woanders bist oder das Spiel geschlossen hast.</div>' +
       '<div><b style="color:var(--txt)">2 · Schmieden.</b> Kauf Basisrunen und verschmilz je zwei Fähigkeiten zu einer neuen. Elemente vermischen sich — Name, Aussehen und Werte entstehen aus deiner Mischung.</div>' +
-      '<div><b style="color:var(--txt)">3 · Stärker werden.</b> Je mehr Runen in einer Fähigkeit stecken, desto höher ihre Stufe. Mehrere <i>verschiedene</i> Elemente geben zusätzlich Bonus.</div>' +
+      '<div><b style="color:var(--txt)">3 · Stärker werden.</b> Je mehr Runen in einer Fähigkeit stecken, desto höher ihre Stufe — und desto prächtiger ihr Siegel. Mehrere <i>verschiedene</i> Elemente geben zusätzlich Bonus.</div>' +
       '<div>Alles, was du je entdeckst, bleibt für immer im Kodex — und lässt sich dort jederzeit nachschmieden.</div>' +
     '</div>' +
     '<div class="sheet-actions"><button class="btn primary big" id="introOk">Los geht\'s</button></div>';

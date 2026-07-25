@@ -224,3 +224,70 @@ export const BOSS_HP_MULT = 4;
 export function coreHp(level) {
   return Math.round(220 * Math.pow(1.18, level));
 }
+
+/* ------------------------------------------------------------------ *
+ * GEGNER-EIGENSCHAFTEN
+ * Ab mittleren Wellen bekommen Gegner Zusätze. Sie machen die Kämpfe
+ * unterschiedlich, ohne dass man etwas dazulernen müsste — man sieht sie.
+ * ------------------------------------------------------------------ */
+export const AFFIXES = {
+  panzer: {
+    name: 'Gepanzert', short: 'PZR', from: 8, weight: 3,
+    color: '#c9d4e6', desc: 'Nimmt 40 % weniger Schaden.'
+  },
+  flink: {
+    name: 'Flink', short: 'FLK', from: 6, weight: 3,
+    color: '#8affc1', desc: 'Deutlich schneller unterwegs.'
+  },
+  teilend: {
+    name: 'Teilend', short: 'TLD', from: 12, weight: 2,
+    color: '#ff9ad1', desc: 'Zerfällt beim Tod in zwei Kleine.'
+  },
+  zaeh: {
+    name: 'Zäh', short: 'ZAH', from: 16, weight: 2,
+    color: '#ffc247', desc: 'Doppelte Lebenspunkte, dafür träge.'
+  }
+};
+
+/* Wahrscheinlichkeit, dass ein Gegner überhaupt eine Eigenschaft bekommt. */
+export function affixChance(wave) {
+  return Math.min(0.55, Math.max(0, (wave - 5) * 0.028));
+}
+
+/* ------------------------------------------------------------------ *
+ * TRANSZENDENZ (Prestige)
+ * ------------------------------------------------------------------ */
+export const TRANSCEND_WAVE = 25;
+
+export function starsFor(bestWave) {
+  if (bestWave < TRANSCEND_WAVE) return 0;
+  return Math.floor(3 * Math.pow(bestWave / TRANSCEND_WAVE, 1.4));
+}
+export const starDamage  = (stars) => 1 + stars * 0.12;
+export const starEssence = (stars) => 1 + stars * 0.08;
+
+/* ------------------------------------------------------------------ *
+ * MEILENSTEINE — kleine Ziele mit Essenzbelohnung
+ * ------------------------------------------------------------------ */
+export const MILESTONES = [
+  { id: 'w5',    name: 'Erster Boss',        desc: 'Erreiche Welle 5',            test: s => s.bestWave >= 5,     reward: 120 },
+  { id: 'w10',   name: 'Zehn Wellen',        desc: 'Erreiche Welle 10',           test: s => s.bestWave >= 10,    reward: 400 },
+  { id: 'w20',   name: 'Tief im Sturm',      desc: 'Erreiche Welle 20',           test: s => s.bestWave >= 20,    reward: 1800 },
+  { id: 'w35',   name: 'Unaufhaltsam',       desc: 'Erreiche Welle 35',           test: s => s.bestWave >= 35,    reward: 9000 },
+  { id: 'w50',   name: 'Legende der Arena',  desc: 'Erreiche Welle 50',           test: s => s.bestWave >= 50,    reward: 40000 },
+  { id: 'c15',   name: 'Sammler',            desc: '15 Fähigkeiten im Kodex',     test: s => s.codexN >= 15,      reward: 250 },
+  { id: 'c40',   name: 'Archivar',           desc: '40 Fähigkeiten im Kodex',     test: s => s.codexN >= 40,      reward: 1500 },
+  { id: 'c80',   name: 'Chronist',           desc: '80 Fähigkeiten im Kodex',     test: s => s.codexN >= 80,      reward: 8000 },
+  { id: 'd8',    name: 'Achtfach',           desc: 'Eine Fusion aus 8 Runen',     test: s => s.deepest >= 8,      reward: 300 },
+  { id: 'd16',   name: 'Sechzehnfach',       desc: 'Eine Fusion aus 16 Runen',    test: s => s.deepest >= 16,     reward: 2500 },
+  { id: 'd32',   name: 'Zweiunddreißig',     desc: 'Eine Fusion aus 32 Runen',    test: s => s.deepest >= 32,     reward: 20000 },
+  { id: 'all8',  name: 'Vollständig',        desc: 'Alle acht Elemente besitzen', test: s => s.unlocked >= 8,     reward: 1200 },
+  { id: 'k500',  name: 'Fünfhundert',        desc: '500 Gegner besiegt',          test: s => s.kills >= 500,      reward: 900 },
+  { id: 'k5000', name: 'Fünftausend',        desc: '5000 Gegner besiegt',         test: s => s.kills >= 5000,     reward: 12000 }
+];
+
+/* ------------------------------------------------------------------ *
+ * HINTERGRUND / OFFLINE
+ * ------------------------------------------------------------------ */
+export const MAX_OFFLINE_SECONDS = 8 * 3600;   /* länger bringt nichts mehr */
+export const TRAVEL_SECONDS = 14;              /* wie lange ein Gegner bis zum Kern braucht */

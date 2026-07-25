@@ -70,7 +70,17 @@ export function lighten(hex, t) { return mixHex(hex, '#ffffff', t); }
 export function darken(hex, t)  { return mixHex(hex, '#000000', t); }
 
 /* Haptik / Feedback -------------------------------------------------- */
+/* Vor der ersten Berührung lehnen Browser Vibration ab und schreiben eine
+   Warnung in die Konsole — also einfach abwarten. */
+let touched = false;
+if (typeof window !== 'undefined') {
+  const mark = () => { touched = true; };
+  window.addEventListener('pointerdown', mark, { once: true });
+  window.addEventListener('touchend', mark, { once: true });
+  window.addEventListener('keydown', mark, { once: true });
+}
 export function buzz(pattern) {
+  if (!touched) return;
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (_) {}
 }
 

@@ -2,7 +2,8 @@
 
 Ein Fusions-Spiel fürs Handy: Basisrunen kaufen, je zwei Fähigkeiten zu einer
 neuen verschmelzen und das Ergebnis in einer Auto-Kampf-Arena gegen immer
-härtere Wellen schicken.
+härtere Wellen schicken. Die Wellen laufen weiter, auch wenn man gerade
+woanders ist oder das Spiel geschlossen hat.
 
 Läuft komplett im Browser — kein Server, keine Konten, kein App Store.
 Der Spielstand liegt lokal im Gerät (`localStorage`).
@@ -38,6 +39,28 @@ Kodex ist eine echte Sammlung statt einer Liste von Zufällen.
   steht, lässt sich dort jederzeit gegen Essenz nachschmieden. Man verliert
   also nie eine Entdeckung, nur Material.
 
+## Was sonst noch mitspielt
+
+* **Siegel, die mitwachsen.** Das Bild einer Fähigkeit setzt sich aus drei
+  Ebenen zusammen: das Element gibt das Motiv (Flamme, Tropfen, Blitz,
+  Kristall, Schwinge, Sonne, Sichel, Runenkreis), die ID gibt das Linienwerk,
+  die Stufe gibt Rahmen, Strahlenkranz, Elementsteine und Krone. Eine
+  Feuerfähigkeit bleibt über alle Fusionen hinweg als Feuer erkennbar und
+  wird trotzdem mit jeder Stufe sichtbar prächtiger.
+* **Auto-Verschmelzen.** Optional: gleiche Fähigkeiten im Vorrat legen sich
+  von selbst zusammen. Ausgerüstete bleiben unangetastet — wer zwei gleiche
+  nebeneinander laufen lassen will, rüstet sie einfach aus.
+* **Wellen im Hintergrund.** `idle.js` rechnet dieselbe Wellenmathematik im
+  Zeitraffer nach, wenn die Arena nicht sichtbar ist. Beim Zurückkommen zeigt
+  eine Übersicht, was passiert ist (gedeckelt auf 8 Stunden).
+* **Gegner-Eigenschaften** ab Welle 6: gepanzert, flink, teilend, zäh — jede
+  mit eigenem Aussehen.
+* **Transzendenz** ab Welle 25: Lauf zurücksetzen, dafür Sterne für dauerhaft
+  mehr Schaden und Essenz. Kodex und freigeschaltete Elemente bleiben.
+* **Meilensteine** mit Essenzbelohnung, **Bossleiste**, **Wellenfortschritt**,
+  eine eigene Himmelsfarbe je Fünferstaffel und **Ton** aus reiner
+  Synthese (keine Audiodateien, abschaltbar).
+
 ## Aufbau
 
 ```
@@ -48,6 +71,8 @@ game/
   js/fusion.js          Signatur → fertige Fähigkeit (Name, Werte, Farben)
   js/glyph.js           prozedurale Siegel, als Data-URL zwischengespeichert
   js/combat.js          Arena: Wellen, Geschosse, Effekte, Zeichnen
+  js/idle.js            dieselben Wellen im Zeitraffer, für Hintergrund/Offline
+  js/audio.js           kleiner Synthesizer für alle Klänge
   js/state.js           Spielstand und alle Aktionen darauf
   js/ui.js              Bildschirme, Detailblatt, Enthüllungs-Animation
   js/main.js            Verdrahtung

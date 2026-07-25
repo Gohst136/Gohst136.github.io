@@ -3,7 +3,8 @@
    Funktionen weiter unten, damit Speichern und Neuzeichnen nie vergessen wird. */
 
 import {
-  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, coreHp
+  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, coreHp,
+  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence
 } from './data.js';
 import { ability, baseId, fusionId, canFuse, reforgeCost, levelOfId } from './fusion.js';
 import { saveState, loadState, clearState, uid, clamp } from './util.js';
@@ -27,8 +28,13 @@ function freshState() {
     deck: [start[0].u, start[1].u],
     codex: { [baseId('FE')]: { n: 1, w: 1 }, [baseId('WA')]: { n: 1, w: 1 } },
     core: { hp: 0, regen: 0, focus: 0, greed: 0 },
-    stats: { kills: 0, fusions: 0, essenceTotal: 0, deepest: 1 },
-    seen: { intro: false }
+    stats: { kills: 0, fusions: 0, essenceTotal: 0, deepest: 1, waves: 0 },
+    seen: { intro: false },
+    opt: { autoMerge: false, sound: true },
+    stars: 0,
+    prestiges: 0,
+    mile: {},
+    lastTick: Date.now()
   };
 }
 
@@ -52,6 +58,11 @@ export function init() {
     S.core = Object.assign({ hp: 0, regen: 0, focus: 0, greed: 0 }, raw.core || {});
     S.stats = Object.assign({ kills: 0, fusions: 0, essenceTotal: 0, deepest: 1 }, raw.stats || {});
     S.seen = Object.assign({ intro: false }, raw.seen || {});
+    S.opt = Object.assign({ autoMerge: false, sound: true }, raw.opt || {});
+    S.mile = Object.assign({}, raw.mile || {});
+    S.stars = raw.stars || 0;
+    S.prestiges = raw.prestiges || 0;
+    S.lastTick = raw.lastTick || Date.now();
     /* Verwaiste Ausrüstungsplätze aufräumen. */
     S.deck = (S.deck || []).map(u => (S.inv.some(e => e.u === u) ? u : null));
   }
@@ -83,8 +94,31 @@ export function deckAbilities() {
   return deckEntries().map(e => (e ? ability(e.id) : null));
 }
 
-export function totalPower() {
+export function rawPower() {
   return deckAbilities().reduce((s, a) => s + (a ? a.power : 0), 0);
+}
+
+/* Was am Ende in der Arena ankommt — inklusive Sternen aus Transzendenzen. */
+export function totalPower() {
+  return rawPower() * starDamage(S.stars);
+}
+
+/* Die reine Macht-Zahl ist Einzelziel-Schaden. In einer vollen Welle richten
+   Flächentreffer, Kettenblitze und Brand aber deutlich mehr an — der
+   Hintergrund-Rechner braucht diesen realistischeren Wert, sonst wirkt er
+   viel schwächer als das, was man auf dem Bildschirm sieht. */
+export function effectivePower() {
+  let sum = 0;
+  for (const a of deckAbilities()) {
+    if (!a) continue;
+    const st = a.stats;
+    const splash = 1 + Math.min(1.6, st.aoe / 55) * 0.75;
+    const chain  = 1 + st.chain * 0.5;
+    const burn   = 1 + st.burn * 0.85;
+    const pierce = 1 + st.pierce * 0.28;
+    sum += a.power * splash * chain * burn * pierce;
+  }
+  return sum * starDamage(S.stars);
 }
 
 export function coreStats() {
@@ -92,7 +126,8 @@ export function coreStats() {
     maxHp: coreHp(S.core.hp),
     regen: 1.5 + S.core.regen * 0.6,
     focusRate: 1 + S.core.focus * 0.12,
-    greed: 1 + S.core.greed * 0.10
+    greed: (1 + S.core.greed * 0.10) * starEssence(S.stars),
+    dmgMult: starDamage(S.stars)
   };
 }
 
@@ -166,8 +201,10 @@ export function reforge(id) {
   return { ok: true, entry: e, msg: 'Nachgeschmiedet.' };
 }
 
-/* Verschmelzen: beide Zutaten werden verbraucht. */
-export function doFuse(uA, uB) {
+/* Verschmelzen: beide Zutaten werden verbraucht.
+   Der Kern meldet nichts nach außen — so kann Auto-Verschmelzen viele
+   Schritte am Stück machen und die Oberfläche nur einmal neu zeichnen. */
+function fuseCore(uA, uB) {
   const a = invEntry(uA), b = invEntry(uB);
   if (!a || !b || a.u === b.u) return { ok: false, msg: 'Zwei verschiedene Fähigkeiten wählen.' };
   const check = canFuse(a.id, b.id);
@@ -189,8 +226,38 @@ export function doFuse(uA, uB) {
   const free = S.deck.slice(0, slots()).indexOf(null);
   if (wasEquipped && free >= 0) S.deck[free] = entry.u;
 
-  touch('fuse');
   return { ok: true, entry, ability: ability(newId), isNew };
+}
+
+export function doFuse(uA, uB) {
+  const res = fuseCore(uA, uB);
+  if (res.ok) touch('fuse');
+  return res;
+}
+
+/* ---------------- Auto-Verschmelzen ---------------- *
+   Nur gleiche, NICHT ausgerüstete Fähigkeiten werden zusammengelegt. Wer
+   zwei identische Fähigkeiten nebeneinander laufen lassen will, rüstet sie
+   aus — dann fasst sie niemand an. */
+export function autoMergeAll(limit = 60) {
+  let merged = 0, discovered = 0, best = null;
+  for (let k = 0; k < limit; k++) {
+    const seenIds = new Map();
+    let pair = null;
+    for (const e of S.inv) {
+      if (isEquipped(e.u)) continue;
+      if (seenIds.has(e.id)) { pair = [seenIds.get(e.id), e.u]; break; }
+      seenIds.set(e.id, e.u);
+    }
+    if (!pair) break;
+    const res = fuseCore(pair[0], pair[1]);
+    if (!res.ok) break;
+    merged++;
+    if (res.isNew) discovered++;
+    if (!best || res.ability.power > best.power) best = res.ability;
+  }
+  if (merged) touch('fuse');
+  return { merged, discovered, best };
 }
 
 /* Sicherheitsnetz: ohne Fähigkeit und ohne Essenz käme man nie wieder in
@@ -232,6 +299,21 @@ export function equip(u, slot) {
   return { ok: true };
 }
 
+/* Die stärksten Fähigkeiten aus dem Vorrat auf alle freien Plätze legen.
+   Praktisch nach dem Auto-Verschmelzen — sonst kämpft man mit Funken weiter,
+   während im Vorrat ein Monstrum liegt. */
+export function equipBest() {
+  const max = slots();
+  const ranked = S.inv.slice().sort((a, b) => ability(b.id).power - ability(a.id).power);
+  const chosen = ranked.slice(0, max).map(e => e.u);
+  const before = S.deck.slice(0, max).join(',');
+  while (S.deck.length < max) S.deck.push(null);
+  for (let i = 0; i < max; i++) S.deck[i] = chosen[i] || null;
+  const changed = S.deck.slice(0, max).join(',') !== before;
+  if (changed) touch('deck');
+  return { ok: true, changed, n: chosen.length };
+}
+
 export function unequip(slot) {
   if (S.deck[slot]) { S.deck[slot] = null; touch('deck'); }
 }
@@ -268,3 +350,53 @@ export function onDefeat(w) {
 }
 
 export function addKill() { S.stats.kills++; }
+
+/* ---------------- Meilensteine ---------------- */
+export function checkMilestones() {
+  const view = {
+    bestWave: S.bestWave,
+    codexN: codexCount(),
+    deepest: S.stats.deepest || 1,
+    unlocked: S.unlocked.length,
+    kills: S.stats.kills
+  };
+  const done = [];
+  for (const m of MILESTONES) {
+    if (S.mile[m.id] || !m.test(view)) continue;
+    S.mile[m.id] = 1;
+    S.essence += m.reward;
+    S.stats.essenceTotal += m.reward;
+    done.push(m);
+  }
+  if (done.length) persist();
+  return done;
+}
+
+export const milestoneProgress = () => ({
+  done: MILESTONES.filter(m => S.mile[m.id]).length,
+  total: MILESTONES.length
+});
+
+/* ---------------- Transzendenz ---------------- *
+   Alles zurück auf Anfang, aber die Elemente bleiben freigeschaltet und der
+   Kodex bleibt vollständig — ein neuer Lauf ist dadurch deutlich schneller. */
+export const canTranscend = () => S.bestWave >= TRANSCEND_WAVE;
+export const transcendGain = () => Math.max(0, starsFor(S.bestWave) - S.stars);
+
+export function transcend() {
+  if (!canTranscend()) return { ok: false, msg: `Erst ab Welle ${TRANSCEND_WAVE}.` };
+  const gain = transcendGain();
+  if (gain <= 0) return { ok: false, msg: 'Komm erst weiter als beim letzten Mal.' };
+
+  S.stars += gain;
+  S.prestiges++;
+  S.essence = 0;
+  S.wave = 1;
+  S.bestWave = 1;
+  S.core = { hp: 0, regen: 0, focus: 0, greed: 0 };
+  const start = [{ u: uid(), id: baseId('FE') }, { u: uid(), id: baseId('WA') }];
+  S.inv = start;
+  S.deck = [start[0].u, start[1].u];
+  touch('all');
+  return { ok: true, gain, stars: S.stars };
+}
