@@ -1,0 +1,17 @@
+{
+  "name": "Nova Leap",
+  "short_name": "Nova Leap",
+  "description": "Weltraum-Jumper: immer weiter nach oben, mit Sauerstoff als Uhr.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#04050d",
+  "theme_color": "#070a18",
+  "lang": "de",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
