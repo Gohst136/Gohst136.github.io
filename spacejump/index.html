@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#070a18" />
+<meta name="description" content="Nova Leap — ein Weltraum-Jumper: immer weiter nach oben, mit Sauerstoff als Uhr." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Nova Leap" />
+<title>Nova Leap</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="view"></canvas>
+
+    <!-- ------------------------------------------------------------- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-left">
+          <div class="hud-height"><span id="hud-m">0</span><i>m</i></div>
+          <div class="hud-sector"><span id="hud-sector">Erdorbit</span></div>
+        </div>
+        <div class="hud-right">
+          <div class="hud-coins"><span class="coin-dot"></span><span id="hud-coins">0</span></div>
+          <button id="btn-pause" class="icon-btn" aria-label="Pause">
+            <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="o2-wrap">
+        <div class="o2-label">O₂</div>
+        <div class="o2-bar"><div id="o2-fill"></div><div class="o2-ticks"></div></div>
+      </div>
+
+      <div id="buffs" class="buffs"></div>
+      <div id="combo" class="combo"></div>
+    </div>
+
+    <!-- ------------------------------------------------------ Sektorband -->
+    <div id="sector-banner" class="sector-banner">
+      <div class="sb-num">Sektor <span id="sb-num">2</span></div>
+      <div class="sb-name" id="sb-name">Asteroidengürtel</div>
+      <div class="sb-sub" id="sb-sub">Gestein, so weit die Sensoren reichen</div>
+    </div>
+
+    <!-- ---------------------------------------------------------- Titel -->
+    <section class="screen show" id="screen-title">
+      <div class="title-wrap">
+        <div class="logo">
+          <span class="logo-nova">NOVA</span>
+          <span class="logo-leap">LEAP</span>
+          <div class="logo-orbit"><i></i><i></i><i></i></div>
+        </div>
+        <p class="tagline">Immer weiter nach oben.<br />Der Sauerstoff ist deine Uhr.</p>
+
+        <div class="best-card">
+          <div><b id="t-best">0</b><span>Bestmarke (m)</span></div>
+          <div><b id="t-sector">1</b><span>tiefster Sektor</span></div>
+          <div><b id="t-coins">0</b><span>Münzen</span></div>
+        </div>
+
+        <button class="btn primary big" data-action="play">Start</button>
+        <div class="btn-row">
+          <button class="btn" data-nav="skins">Anzüge</button>
+          <button class="btn" data-nav="missions">Missionen</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" data-nav="help">Anleitung</button>
+          <button class="btn ghost" data-nav="settings">Einstellungen</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- Anzüge -->
+    <section class="screen" id="screen-skins">
+      <header class="sheet-head">
+        <button class="icon-btn back" data-nav="title" aria-label="Zurück">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Anzüge</h2>
+        <div class="wallet"><span class="coin-dot"></span><span id="skins-coins">0</span></div>
+      </header>
+      <div class="skin-grid" id="skin-grid"></div>
+      <div class="skin-detail" id="skin-detail"></div>
+    </section>
+
+    <!-- ------------------------------------------------------- Missionen -->
+    <section class="screen" id="screen-missions">
+      <header class="sheet-head">
+        <button class="icon-btn back" data-nav="title" aria-label="Zurück">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Missionen</h2>
+        <div class="wallet"><span class="coin-dot"></span><span id="mis-coins">0</span></div>
+      </header>
+      <div class="mission-list" id="mission-list"></div>
+      <div class="stat-block" id="stat-block"></div>
+    </section>
+
+    <!-- ------------------------------------------------------- Anleitung -->
+    <section class="screen" id="screen-help">
+      <header class="sheet-head">
+        <button class="icon-btn back" data-nav="title" aria-label="Zurück">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Anleitung</h2>
+      </header>
+      <div class="sheet-body">
+        <h3>Steuerung</h3>
+        <div class="help-grid">
+          <div class="help-card"><b>Ziehen</b><span>Finger auf dem Bild bewegen — die Figur folgt.</span></div>
+          <div class="help-card"><b>Neigen</b><span>Gerät kippen. Muss in den Einstellungen erlaubt werden.</span></div>
+          <div class="help-card"><b>Tasten</b><span>← → oder A/D am Rechner.</span></div>
+          <div class="help-card"><b>Schießen</b><span>Antippen oder Leertaste. Trifft Drohnen und Brocken.</span></div>
+        </div>
+
+        <h3>Sauerstoff</h3>
+        <p class="help-text">
+          Die O₂-Leiste läuft ununterbrochen leer. Jede Landung gibt etwas zurück,
+          Schubdüsen mehr, ein Kanister ein gutes Drittel. Wer stehen bleibt,
+          erstickt — der Weg nach oben ist der einzige Weg.
+        </p>
+
+        <h3>Plattformen</h3>
+        <div class="plat-legend" id="plat-legend"></div>
+
+        <h3>Was dir sonst begegnet</h3>
+        <ul class="help-list">
+          <li><b>Drohne</b> — von oben draufspringen oder abschießen. Seitlich berühren ist tödlich.</li>
+          <li><b>Brocken</b> — treiben quer durchs Bild. Große brauchen zwei Treffer.</li>
+          <li><b>Mine</b> — zündet, sobald du nah kommst. Der Knall reicht weit.</li>
+          <li><b>Schwerkraftfeld</b> — zieht dich an. Der Kern lässt niemanden wieder los.</li>
+          <li><b>Rucksack, Schild, Magnet</b> — kurz, aber sie retten Läufe.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------- Einstellungen -->
+    <section class="screen" id="screen-settings">
+      <header class="sheet-head">
+        <button class="icon-btn back" data-nav="title" aria-label="Zurück">
+          <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Einstellungen</h2>
+      </header>
+      <div class="sheet-body">
+        <div class="setting"><span>Klänge</span><button class="toggle" data-toggle="sfx"><i></i></button></div>
+        <div class="setting"><span>Hintergrundklang</span><button class="toggle" data-toggle="music"><i></i></button></div>
+        <div class="setting"><span>Bildschirmwackeln</span><button class="toggle" data-toggle="shake"><i></i></button></div>
+        <div class="setting"><span>Nachzieher</span><button class="toggle" data-toggle="trail"><i></i></button></div>
+        <div class="setting col">
+          <span>Steuerung</span>
+          <div class="seg" id="control-seg">
+            <button data-control="auto">Automatisch</button>
+            <button data-control="drag">Ziehen</button>
+            <button data-control="tilt">Neigen</button>
+            <button data-control="keys">Tasten</button>
+          </div>
+        </div>
+        <button class="btn ghost" id="btn-tilt-permission">Neigungssensor erlauben</button>
+        <div class="danger-zone">
+          <button class="btn danger" id="btn-reset">Spielstand löschen</button>
+          <p class="tiny">Löscht Münzen, Anzüge, Rekorde und Missionen auf diesem Gerät.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----------------------------------------------------------- Pause -->
+    <section class="screen dim" id="screen-pause">
+      <div class="panel">
+        <h2>Pause</h2>
+        <div class="pause-stats">
+          <div><b id="p-m">0</b><span>Meter</span></div>
+          <div><b id="p-coins">0</b><span>Münzen</span></div>
+          <div><b id="p-sector">1</b><span>Sektor</span></div>
+        </div>
+        <button class="btn primary" data-action="resume">Weiter</button>
+        <button class="btn" data-action="restart">Neu starten</button>
+        <button class="btn ghost" data-action="quit">Zum Menü</button>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------- Game over -->
+    <section class="screen dim" id="screen-over">
+      <div class="panel over">
+        <div class="over-tag" id="over-tag">Abgestürzt</div>
+        <div class="over-score"><span id="o-m">0</span><i>m</i></div>
+        <div class="over-text" id="over-text"></div>
+        <div class="record" id="over-record">Neue Bestmarke!</div>
+        <div class="over-stats">
+          <div><b id="o-coins">0</b><span>Münzen</span></div>
+          <div><b id="o-sector">1</b><span>Sektor</span></div>
+          <div><b id="o-best">0</b><span>Rekord</span></div>
+        </div>
+        <div class="mission-pops" id="mission-pops"></div>
+        <button class="btn primary big" data-action="restart">Nochmal</button>
+        <div class="btn-row">
+          <button class="btn" data-nav="skins">Anzüge</button>
+          <button class="btn ghost" data-action="quit">Menü</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast"></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
