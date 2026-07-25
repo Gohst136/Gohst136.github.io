@@ -2,13 +2,15 @@
    Enthüllungs-Animation nach jeder Verschmelzung. */
 
 import {
-  ELEMENTS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, TIERS,
-  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence, AFFIXES
+  ELEMENTS, SPECIALS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, TIERS,
+  MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence, AFFIXES,
+  MERCHANT, isSpecial, craftCost
 } from './data.js';
 import {
   ability, canFuse, reforgeCost, describe, composition
 } from './fusion.js';
 import { glyphURL } from './glyph.js';
+import { ability as abilityOf, baseId } from './fusion.js';
 import * as G from './state.js';
 import { $, $$, fmt, withAlpha, clamp, buzz, TAU, rng } from './util.js';
 import { sfx, setEnabled as setSound } from './audio.js';
@@ -173,9 +175,79 @@ export function renderHud(h) {
  * Schmiede
  * ------------------------------------------------------------------ */
 export function renderForge() {
+  renderMerchant();
   renderFusionStage();
   renderRuneShop();
   renderInventory();
+}
+
+/* ------------------------------------------------------------------ *
+ * Der Händler
+ * ------------------------------------------------------------------ */
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
+export function renderMerchant() {
+  const box = $('#merchantBox');
+  if (!box) return;
+
+  if (G.S.bestWave < MERCHANT.firstAtWave) {
+    box.classList.add('hidden');
+    markMerchantTab(false);
+    return;
+  }
+  box.classList.remove('hidden');
+
+  if (!G.merchantHere()) {
+    box.className = 'merchant waiting';
+    box.innerHTML =
+      '<span class="m-ico">🜛</span>' +
+      `<span class="m-wait">Der Händler kommt in <b>${mmss(G.merchantSecondsUntil())}</b></span>`;
+    markMerchantTab(false);
+    return;
+  }
+
+  markMerchantTab(true);
+  box.className = 'merchant';
+  const left = G.merchantSecondsLeft();
+  box.innerHTML =
+    '<div class="m-head"><span class="m-ico">🜛</span>' +
+    '<div><div class="m-title">Der Händler ist da</div>' +
+    `<div class="m-sub">Zieht weiter in <b>${mmss(left)}</b> · alles nur einmal zu haben</div></div></div>` +
+    '<div class="m-offers" id="mOffers"></div>';
+
+  const host = $('#mOffers');
+  for (const o of G.merchantStock()) {
+    const el = SPECIALS[o.code];
+    const a = abilityOf(baseId(o.code));
+    const card = document.createElement('button');
+    const affordable = G.S.essence >= o.price && o.left > 0;
+    card.className = 'offer' + (o.left <= 0 ? ' sold' : '') + (affordable ? '' : ' cant');
+    card.innerHTML =
+      `<img src="${glyphURL(a, 96)}" alt="">` +
+      `<span class="o-name">${el.name}</span>` +
+      `<span class="o-eff">${el.effectName}</span>` +
+      `<span class="o-price">${o.left > 0 ? fmt(o.price) + ' ✦' : 'ausverkauft'}</span>` +
+      `<span class="o-stock">${o.left > 0 ? o.left + '× übrig' : ''}</span>`;
+    bindTap(card,
+      () => {
+        const r = G.buySpecial(o.index);
+        if (r.ok) {
+          buzz([12, 40, 16]);
+          r.isNew ? sfx.discover() : sfx.buy();
+          toast(`${r.name}-Rune erstanden${r.isNew ? ' · neu im Kodex' : ''}`, 'good');
+          maybeAutoMerge();
+        } else { sfx.error(); toast(r.msg, 'bad'); }
+        renderMerchant();
+      },
+      () => openSheet(baseId(o.code), { from: 'merchant' })
+    );
+    host.appendChild(card);
+  }
+}
+
+function markMerchantTab(on) {
+  const tab = document.querySelector('.tab[data-screen="forge"]');
+  if (tab) tab.classList.toggle('has-news', on);
 }
 
 function selectedIds() {
@@ -246,16 +318,24 @@ function renderRuneShop() {
   for (const code of UNLOCK_ORDER) {
     const el = ELEMENTS[code];
     const owned = G.S.unlocked.includes(code);
-    const cost = owned ? el.craft * n : el.unlock;
+    /* Kosten für n Stück, jede einzelne teurer als die vorige. */
+    let cost = 0;
+    if (owned) {
+      const made = G.S.crafted[code] || 0;
+      for (let k = 0; k < n; k++) cost += craftCost(code, made + k);
+    } else cost = el.unlock;
+    const gated = !owned && G.S.bestWave < el.minWave;
     const affordable = G.S.essence >= cost;
     const btn = document.createElement('button');
     btn.className = 'rune' + (owned ? '' : ' locked') +
-                    (affordable && (owned || code === next) ? '' : ' cant');
+                    (affordable && !gated && (owned || code === next) ? '' : ' cant');
     btn.innerHTML =
       `<span class="dot" style="background:linear-gradient(135deg,${el.colors[0]},${el.colors[1]})"></span>` +
       `<span><span class="rn">${el.name}</span><br>` +
       `<span class="rc">${owned ? fmt(cost) + ' ✦' + (n > 1 ? ' ×' + n : '')
-                                : (code === next ? 'Frei ab ' + fmt(cost) + ' ✦' : 'gesperrt')}</span></span>`;
+                                : code !== next ? 'gesperrt'
+                                : gated ? 'ab Welle ' + el.minWave
+                                : 'Frei ab ' + fmt(cost) + ' ✦'}</span></span>`;
     btn.addEventListener('click', () => {
       if (owned) {
         let made = 0;
@@ -271,12 +351,16 @@ function renderRuneShop() {
           sfx.error();
           toast(G.S.inv.length >= G.INV_LIMIT ? 'Vorrat voll — verwerte etwas.' : 'Zu wenig Essenz.', 'bad');
         }
-      } else if (code === next) {
+      } else if (code === next && !gated) {
         const r = G.unlockElement(code);
         toast(r.msg, r.ok ? 'good' : 'bad');
         if (r.ok) { buzz([10, 40, 20]); sfx.discover(); }
         else sfx.error();
+      } else if (gated) {
+        sfx.error();
+        toast(`${el.name} findest du erst ab Welle ${el.minWave}.`, 'bad');
       } else {
+        sfx.error();
         toast('Schalte erst ' + ELEMENTS[next].name + ' frei.', 'bad');
       }
     });
@@ -908,6 +992,8 @@ export function showIntro(onClose) {
       '<div><b style="color:var(--txt)">1 · Kämpfen.</b> Deine ausgerüsteten Fähigkeiten feuern von allein. Jeder Sieg bringt Essenz ✦ — auch dann, wenn du gerade woanders bist oder das Spiel geschlossen hast.</div>' +
       '<div><b style="color:var(--txt)">2 · Schmieden.</b> Kauf Basisrunen und verschmilz je zwei Fähigkeiten zu einer neuen. Elemente vermischen sich — Name, Aussehen und Werte entstehen aus deiner Mischung.</div>' +
       '<div><b style="color:var(--txt)">3 · Stärker werden.</b> Je mehr Runen in einer Fähigkeit stecken, desto höher ihre Stufe — und desto prächtiger ihr Siegel. Mehrere <i>verschiedene</i> Elemente geben zusätzlich Bonus.</div>' +
+      '<div><b style="color:var(--txt)">4 · Der Händler.</b> Alle paar Minuten kommt einer vorbei und hat Fremdrunen dabei, die es nirgends zu kaufen gibt. Er bleibt nicht lange.</div>' +
+      '<div>Jede weitere Rune desselben Elements kostet mehr — reine Menge bringt dich nicht durch. Neue Elemente findest du erst in späteren Wellen.</div>' +
       '<div>Alles, was du je entdeckst, bleibt für immer im Kodex — und lässt sich dort jederzeit nachschmieden.</div>' +
     '</div>' +
     '<div class="sheet-actions"><button class="btn primary big" id="introOk">Los geht\'s</button></div>';

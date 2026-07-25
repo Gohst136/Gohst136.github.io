@@ -4,7 +4,7 @@
    je nachdem, aus welchen Elementen sie besteht. */
 
 import {
-  ENEMY_TYPES, BOSS_NAMES, BOSS_HP_MULT, AFFIXES, affixChance,
+  ENEMY_TYPES, BOSS_NAMES, bossHpMult, AFFIXES, affixChance,
   enemyHp, enemyDamage, enemyCount, essencePerKill, waveBonus, isBossWave
 } from './data.js';
 import { clamp, TAU, withAlpha, lighten, darken, rng, fmt } from './util.js';
@@ -58,6 +58,8 @@ export class Arena {
     this.killsThisWave = 0;
     this.repeatWave = false;
     this.stars = null;
+    this.backdrop = null;
+    this.backdropZone = null;
     this.zone = ZONES[0];
     this.sprites = new Map();
 
@@ -80,22 +82,64 @@ export class Arena {
     this.core.y = this.H - 78;
     this.sprites.clear();
     this._buildStars();
+    this.backdrop = null;
   }
 
+  /* Eine wandernde Sternenlage; die feinen Punkte sind fest in den
+     Hintergrund gebacken. So bleibt es bei wenigen Vollbild-Zeichnungen
+     pro Bild — auf dem Handy macht das den Unterschied. */
   _buildStars() {
-    const make = (density, maxSize, alpha) => {
-      const c = document.createElement('canvas');
-      c.width = this.W; c.height = this.H;
-      const g = c.getContext('2d');
-      const r = rng(density * 1000 + 7);
-      for (let i = 0; i < Math.round(this.W * this.H / density); i++) {
-        const x = r() * this.W, y = r() * this.H, s = r() * maxSize + 0.3;
-        g.fillStyle = `rgba(210,215,255,${(0.1 + r() * 0.5) * alpha})`;
-        g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
-      }
-      return c;
-    };
-    this.stars = [make(9000, 1.9, 1), make(4200, 1.1, 0.6)];
+    const c = document.createElement('canvas');
+    c.width = this.W; c.height = this.H;
+    const g = c.getContext('2d');
+    const r = rng(9007);
+    for (let i = 0; i < Math.round(this.W * this.H / 8000); i++) {
+      const x = r() * this.W, y = r() * this.H, s = r() * 1.9 + 0.35;
+      g.fillStyle = `rgba(210,215,255,${0.12 + r() * 0.5})`;
+      g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
+    }
+    this.stars = c;
+  }
+
+  _buildBackdrop() {
+    const z = this.zone, W = this.W, H = this.H;
+    const c = document.createElement('canvas');
+    c.width = Math.round(W * this.dpr); c.height = Math.round(H * this.dpr);
+    const g = c.getContext('2d');
+    g.scale(this.dpr, this.dpr);
+
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, z.a);
+    bg.addColorStop(0.72, z.b);
+    bg.addColorStop(1, darken(z.b, 0.35));
+    g.fillStyle = bg;
+    g.fillRect(0, 0, W, H);
+
+    const haze = g.createRadialGradient(W * 0.5, H * 0.10, 10, W * 0.5, H * 0.10, H * 0.55);
+    haze.addColorStop(0, withAlpha(z.haze, 0.11));
+    haze.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = haze;
+    g.fillRect(0, 0, W, H);
+
+    /* Feine, stehende Sterne */
+    const r = rng(4201);
+    for (let i = 0; i < Math.round(W * H / 4200); i++) {
+      const x = r() * W, y = r() * H, s = r() * 1.1 + 0.3;
+      g.fillStyle = `rgba(210,215,255,${(0.08 + r() * 0.4)})`;
+      g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
+    }
+
+    /* Bodenlinie */
+    const lineY = this.core.y - this.core.r - 6;
+    const lg = g.createLinearGradient(0, lineY - 6, 0, lineY + 6);
+    lg.addColorStop(0, 'rgba(255,255,255,0)');
+    lg.addColorStop(0.5, 'rgba(255,255,255,0.16)');
+    lg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = lg;
+    g.fillRect(0, lineY - 6, W, 12);
+
+    this.backdrop = c;
+    this.backdropZone = z;
   }
 
   start() {
@@ -218,6 +262,11 @@ export class Arena {
         if (this.cooldowns[i] <= 0 && this.enemies.length) {
           this.cooldowns[i] = a.stats.cd * haste;
           this._fire(a);
+          /* Zeitrunen können den Takt sofort zurücksetzen. */
+          if (a.stats.haste > 0 && Math.random() < a.stats.haste) {
+            this.cooldowns[i] = 60;
+            this._ring(this.core.x, this.core.y - 20, 8, 46, '#ffe9a8', 260);
+          }
           if (Math.random() < a.stats.echo) {
             setTimeout(() => { if (this.enemies.length) this._fire(a, true); }, 150);
           }
@@ -270,7 +319,7 @@ export class Arena {
     const affix = entry.affix || null;
     const A = affix ? AFFIXES[affix] : null;
 
-    let hp = enemyHp(this.wave) * t.hp * (boss ? BOSS_HP_MULT : 1);
+    let hp = boss ? enemyHp(this.wave) * bossHpMult(this.wave) : enemyHp(this.wave) * t.hp;
     let speedMult = 1;
     if (affix === 'zaeh') { hp *= 2; speedMult = 0.7; }
     if (affix === 'flink') speedMult = 1.6;
@@ -289,6 +338,7 @@ export class Arena {
       dmg: enemyDamage(this.wave) * t.dmg * (boss ? 2.4 : 1) * (entry.small ? 0.4 : 1),
       rot: Math.random() * TAU,
       burn: 0, burnT: 0, slowT: 0, slowF: 1, hitT: 0,
+      frozenT: 0, poison: 0, poisonT: 0, poisonStacks: 0,
       small: !!entry.small,
       name: boss ? BOSS_NAMES[(this.wave / 5 - 1) % BOSS_NAMES.length] : t.name
     });
@@ -301,6 +351,7 @@ export class Arena {
       /* Beim Tod des Kerns wird die Liste mitten in der Schleife geleert. */
       if (!e) continue;
       if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowF = 1; }
+      if (e.frozenT > 0) e.frozenT -= dt;
       if (e.burnT > 0) {
         e.burnT -= dt;
         this._damage(e, e.burn * s, { silent: true, dot: true });
@@ -309,8 +360,26 @@ export class Arena {
                          -30 - Math.random() * 40, (Math.random() - 0.5) * 30, '#ff9d2f', 420, 2);
         }
       }
+      if (e.poisonT > 0) {
+        e.poisonT -= dt;
+        this._damage(e, e.poison * s, { silent: true, dot: true });
+        if (Math.random() < 0.22) {
+          this._particle(e.x + (Math.random() - 0.5) * e.radius, e.y + e.radius * 0.4,
+                         (Math.random() - 0.5) * 20, -18, '#b6ff3a', 520, 1.8);
+        }
+        if (e.poisonT <= 0) { e.poison = 0; e.poisonStacks = 0; }
+      }
       if (e.hitT > 0) e.hitT -= dt;
       if (e.hp <= 0) continue;
+
+      /* Eingefrorene Gegner stehen einfach still. */
+      if (e.frozenT > 0) {
+        if (Math.random() < 0.12) {
+          this._particle(e.x + (Math.random() - 0.5) * e.radius * 1.4, e.y,
+                         0, -14, '#dff6ff', 380, 1.4);
+        }
+        continue;
+      }
 
       e.y += e.speed * e.slowF * s;
       e.x += e.vx * s;
@@ -456,18 +525,19 @@ export class Arena {
   _impact(a, enemy, dmg) {
     const st = a.stats;
     const crit = Math.random() < st.crit;
-    const total = dmg * (crit ? st.critMult : 1);
-    this._damage(enemy, total, { crit, color: a.colors.glow });
+    const total = dmg * (crit ? st.critMult : 1) * (enemy.boss ? st.bossDmg : 1);
+    this._damage(enemy, total, { crit, color: a.colors.glow, unarmor: st.unarmor });
     sfx.hit();
 
-    this._burst(enemy.x, enemy.y, a.colors.a, crit ? 14 : 7);
+    const busy = this.parts.length > 150;
+    this._burst(enemy.x, enemy.y, a.colors.a, busy ? 3 : (crit ? 14 : 7));
     this._ring(enemy.x, enemy.y, 4, Math.max(18, st.aoe * 0.5), a.colors.glow, 320);
 
     if (st.aoe > 34) {
       for (const o of this.enemies.slice()) {
         if (o === enemy || o.hp <= 0) continue;
         if (Math.hypot(o.x - enemy.x, o.y - enemy.y) < st.aoe) {
-          this._damage(o, total * 0.55, { color: a.colors.a });
+          this._damage(o, total * st.novaShare, { color: a.colors.a, unarmor: st.unarmor });
         }
       }
     }
@@ -478,6 +548,26 @@ export class Arena {
     if (st.slow > 0.05) {
       enemy.slowF = Math.min(enemy.slowF, 1 - st.slow);
       enemy.slowT = 2200;
+    }
+    /* Seuche stapelt sich — jeder Treffer legt noch etwas obendrauf. */
+    if (st.poison > 0.05) {
+      enemy.poison += total * st.poison / 5;
+      enemy.poisonStacks = Math.min(99, (enemy.poisonStacks || 0) + 1);
+      enemy.poisonT = 4500;
+    }
+    /* Starre hält ein Ziel komplett an; Bosse werden nur zäh gebremst. */
+    if (st.freeze > 0.02) {
+      if (!enemy.boss && Math.random() < st.freeze) {
+        enemy.frozenT = Math.max(enemy.frozenT, 900);
+        this._ring(enemy.x, enemy.y, enemy.radius * 0.5, enemy.radius * 2.2, '#dff6ff', 360);
+      } else if (enemy.boss && Math.random() < st.freeze * 0.4) {
+        enemy.slowF = Math.min(enemy.slowF, 0.35);
+        enemy.slowT = 1200;
+      }
+    }
+    /* Sterne reißen ein sichtbares Loch. */
+    if (st.novaShare > 0.75) {
+      this._ring(enemy.x, enemy.y, 8, st.aoe * 1.5, a.colors.glow, 520);
     }
     if (st.chain > 0) {
       let from = enemy, left = st.chain;
@@ -508,7 +598,7 @@ export class Arena {
 
   _damage(enemy, amount, opt = {}) {
     if (enemy.hp <= 0) return;
-    if (enemy.affix === 'panzer') amount *= 0.6;
+    if (enemy.affix === 'panzer' && !opt.unarmor) amount *= 0.6;
     enemy.hp -= amount;
     enemy.hitT = 90;
     if (!opt.silent) {
@@ -518,7 +608,7 @@ export class Arena {
         text: fmt(amount), crit: !!opt.crit,
         color: opt.crit ? '#ffe066' : (opt.color || '#ffffff')
       });
-      if (this.numbers.length > 40) this.numbers.shift();
+      if (this.numbers.length > 24) this.numbers.shift();
     }
     if (!opt.dot) {
       const core = this.hooks.getCore();
@@ -569,6 +659,8 @@ export class Arena {
     }
   }
   _ring(x, y, r0, r1, color, life) {
+    /* Bei Massenbetrieb lieber ein paar Ringe weglassen als Bilder. */
+    if (this.flashes.length > 26) return;
     this.flashes.push({ kind: 'ring', x, y, r0, r1, color, t: 0, life });
   }
 
@@ -602,43 +694,18 @@ export class Arena {
       g.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
     }
 
-    /* Himmel der aktuellen Staffel */
-    const z = this.zone;
-    const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, z.a);
-    bg.addColorStop(0.72, z.b);
-    bg.addColorStop(1, darken(z.b, 0.35));
-    g.fillStyle = bg;
-    g.fillRect(-24, -24, W + 48, H + 48);
+    /* Himmel der aktuellen Staffel — einmal gezeichnet, dann gestempelt. */
+    if (!this.backdrop || this.backdropZone !== this.zone) this._buildBackdrop();
+    g.drawImage(this.backdrop, 0, 0, W, H);
 
-    /* Nebel */
-    const haze = g.createRadialGradient(W * 0.5, H * 0.10, 10, W * 0.5, H * 0.10, H * 0.55);
-    haze.addColorStop(0, withAlpha(z.haze, 0.11));
-    haze.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = haze;
-    g.fillRect(0, 0, W, H);
-
-    /* Zwei Sternenlagen mit unterschiedlichem Tempo */
+    /* Eine wandernde Sternenlage darüber */
     if (this.stars) {
-      const draw = (layer, speed, alpha) => {
-        const off = (this.time * speed) % H;
-        g.globalAlpha = alpha;
-        g.drawImage(layer, 0, off);
-        g.drawImage(layer, 0, off - H);
-      };
-      draw(this.stars[0], 0.010, 0.75);
-      draw(this.stars[1], 0.026, 0.5);
+      const off = (this.time * 0.014) % H;
+      g.globalAlpha = 0.7;
+      g.drawImage(this.stars, 0, off);
+      g.drawImage(this.stars, 0, off - H);
       g.globalAlpha = 1;
     }
-
-    /* Bodenlinie */
-    const lineY = this.core.y - this.core.r - 6;
-    const lg = g.createLinearGradient(0, lineY - 6, 0, lineY + 6);
-    lg.addColorStop(0, 'rgba(255,255,255,0)');
-    lg.addColorStop(0.5, 'rgba(255,255,255,0.16)');
-    lg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = lg;
-    g.fillRect(0, lineY - 6, W, 12);
 
     if (this.focusActive > 0) {
       g.fillStyle = `rgba(150,100,255,${0.09 + 0.05 * Math.sin(this.time / 90)})`;
@@ -730,6 +797,16 @@ export class Arena {
       g.rotate(e.rot);
       g.drawImage(sp.cv, -sp.size / 2, -sp.size / 2, sp.size, sp.size);
 
+      /* Eingefroren: dicker Eisrahmen */
+      if (e.frozenT > 0) {
+        g.beginPath();
+        g.arc(0, 0, e.radius * 1.3, 0, TAU);
+        g.fillStyle = 'rgba(200,240,255,0.28)';
+        g.fill();
+        g.strokeStyle = '#dff6ff';
+        g.lineWidth = 3;
+        g.stroke();
+      }
       /* Frost */
       if (e.slowF < 1) {
         g.beginPath();
@@ -763,6 +840,12 @@ export class Arena {
         g.fillStyle = e.affix ? e.affixColor : '#8affc1';
         g.fillRect(e.x - w / 2, e.y - e.radius - 10, w * hp, 4);
       }
+      if (e.poisonStacks > 0 && !e.small) {
+        g.fillStyle = '#b6ff3a';
+        g.font = '800 8px ui-rounded, -apple-system, system-ui, sans-serif';
+        g.textAlign = 'left';
+        g.fillText('☠' + e.poisonStacks, e.x + e.radius * 0.7, e.y - e.radius - 12);
+      }
       if (e.affix && !e.small) {
         g.fillStyle = withAlpha(e.affixColor, 0.95);
         g.font = '800 8px ui-rounded, -apple-system, system-ui, sans-serif';
@@ -786,8 +869,12 @@ export class Arena {
       }
       g.save();
       g.translate(p.x, p.y);
-      g.shadowBlur = 16;
-      g.shadowColor = withAlpha(c.glow, 1);
+      /* Schein als zweiter, größerer Kreis — deutlich günstiger als
+         shadowBlur, und bei vielen Geschossen macht das den Unterschied. */
+      g.beginPath();
+      g.arc(0, 0, p.r * 2.1, 0, TAU);
+      g.fillStyle = withAlpha(c.glow, 0.22);
+      g.fill();
       g.fillStyle = withAlpha(lighten(c.glow, 0.35), 0.98);
       if (p.kind === 'blade') {
         g.rotate(Math.atan2(p.vy, p.vx));

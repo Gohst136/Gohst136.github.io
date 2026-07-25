@@ -8,11 +8,12 @@
    liefert morgen exakt dieselbe Fähigkeit. */
 
 import {
-  ELEMENTS, ELEMENT_CODES, NAMED, PREFIX, CORE, tierOf
+  ELEMENTS, ELEMENT_CODES, NAMED, PREFIX, CORE, tierOf, BAL
 } from './data.js';
 import { hash32, rng, mixMany, lighten, clamp } from './util.js';
 
-export const MAX_LEVEL = 64;
+/* Kein Deckel mehr: die Kosten bremsen, nicht eine harte Grenze. */
+export const MAX_LEVEL = 4096;
 
 /* ---------- ID <-> Signatur ---------------------------------------- */
 
@@ -61,8 +62,13 @@ function buildName(id, counts, dom, sec, level, tier) {
   const pre   = PREFIX[dom][Math.floor(r() * PREFIX[dom].length)];
   const pool  = CORE[sec];
   let ci = Math.floor(r() * pool.length);
-  /* "Sturmsturm" vermeiden: dann einfach den nächsten Kern nehmen. */
-  if (pool[ci].toLowerCase() === pre.toLowerCase()) ci = (ci + 1) % pool.length;
+  /* "Sturmsturm" und "Facettenfacette" vermeiden: dann den nächsten Kern
+     nehmen, notfalls den danach. */
+  const clashes = (i) => {
+    const a = pre.toLowerCase(), b = pool[i].toLowerCase();
+    return a === b || a.startsWith(b.slice(0, 5)) || b.startsWith(a.slice(0, 5));
+  };
+  for (let k = 0; k < pool.length && clashes(ci); k++) ci = (ci + 1) % pool.length;
   const core = pool[ci];
 
   let name = pre + core;
@@ -80,6 +86,9 @@ function buildName(id, counts, dom, sec, level, tier) {
 /* ---------- Bauplan einer Fähigkeit --------------------------------- */
 
 const _cache = new Map();
+/* Nur für die Eichung: nach einer Änderung der Regler muss der Zwischen-
+   speicher weg, sonst rechnet man mit alten Werten weiter. */
+export function clearAbilityCache() { _cache.clear(); }
 
 export function ability(id) {
   if (_cache.has(id)) return _cache.get(id);
@@ -111,9 +120,9 @@ export function ability(id) {
   }
 
   /* Vielfalt zahlt sich aus — verschiedene Elemente > dasselbe achtmal. */
-  const variety = 1 + 0.11 * (distinct - 1);
+  const variety = 1 + BAL.variety * (distinct - 1);
 
-  const dmg   = 9 * Math.pow(level, 1.28) * variety * (1 + mDmg) * roll;
+  const dmg   = 9 * Math.pow(level, BAL.powExp) * variety * (1 + mDmg) * roll;
   const cd    = clamp(1250 * (1 + mCd) * (1 - Math.min(0.30, level * 0.011)), 220, 2600);
   const crit  = clamp(0.05 + mCrit + level * 0.006, 0.02, 0.75);
   const count = clamp(1 + Math.round(mCount * (1 + level * 0.16)), 1, 9);
@@ -122,13 +131,20 @@ export function ability(id) {
 
   const stats = {
     dmg, cd, crit, count, aoe, speed,
-    critMult:   2 + sh('LI') * 1.6,
+    critMult:   2 + sh('LI') * 1.6 + sh('KR') * 2.4,
     burn:       sh('FE') * 0.55,                       /* Anteil als Schaden über Zeit */
-    slow:       sh('WA') * 0.50,
+    slow:       sh('WA') * 0.50 + sh('IS') * 0.35,
     chain:      Math.floor(sh('BL') * 3.2),
-    pierce:     Math.floor(sh('WI') * 4.2),
+    pierce:     Math.floor(sh('WI') * 4.2 + sh('KR') * 3.4),
     lifesteal:  sh('SC') * 0.11,
-    echo:       sh('AR') * 0.45
+    echo:       sh('AR') * 0.45,
+    /* Fremdrunen */
+    freeze:     sh('IS') * 0.5,        /* Chance, ein Ziel ganz anzuhalten */
+    poison:     sh('GI') * 1.1,        /* stapelbarer Schaden über Zeit */
+    haste:      sh('ZE') * 0.5,        /* Chance, sofort nochmal zu feuern */
+    unarmor:    sh('VO') > 0.06,       /* ignoriert Panzerung */
+    bossDmg:    1 + sh('VO') * 1.1,    /* Bonus gegen Bosse */
+    novaShare:  0.55 + sh('SN') * 0.45 /* Anteil, den Flächenschaden austeilt */
   };
 
   const dps = stats.dmg * stats.count *
@@ -168,7 +184,7 @@ export function canFuse(idA, idB) {
   if (!idA || !idB) return { ok: false, reason: 'Zwei Fähigkeiten auswählen.' };
   const lvl = levelOfId(idA) + levelOfId(idB);
   if (lvl > MAX_LEVEL) {
-    return { ok: false, reason: `Ein Kern fasst höchstens ${MAX_LEVEL} Runen.` };
+    return { ok: false, reason: 'Selbst der Aether hat irgendwo ein Ende.' };
   }
   return { ok: true, id: fusionId(idA, idB) };
 }
@@ -189,14 +205,19 @@ export function reforgeCost(id) {
 
 /* Kurzer Beschreibungstext für die Detailansicht. */
 export function describe(a) {
-  const parts = [];
-  if (a.stats.count > 1) parts.push(`${a.stats.count} Geschosse`);
-  if (a.stats.pierce > 0) parts.push(`durchdringt ${a.stats.pierce}`);
-  if (a.stats.chain > 0) parts.push(`springt ${a.stats.chain}×`);
-  if (a.stats.burn > 0.05) parts.push(`brennt ${Math.round(a.stats.burn * 100)} %`);
-  if (a.stats.slow > 0.05) parts.push(`verlangsamt ${Math.round(a.stats.slow * 100)} %`);
-  if (a.stats.lifesteal > 0.01) parts.push(`zehrt ${(a.stats.lifesteal * 100).toFixed(1)} %`);
-  if (a.stats.echo > 0.03) parts.push(`Echo ${Math.round(a.stats.echo * 100)} %`);
+  const st = a.stats, parts = [];
+  if (st.count > 1) parts.push(`${st.count} Geschosse`);
+  if (st.pierce > 0) parts.push(`durchdringt ${st.pierce}`);
+  if (st.chain > 0) parts.push(`springt ${st.chain}×`);
+  if (st.burn > 0.05) parts.push(`brennt ${Math.round(st.burn * 100)} %`);
+  if (st.poison > 0.05) parts.push(`vergiftet ${Math.round(st.poison * 100)} %`);
+  if (st.freeze > 0.03) parts.push(`friert ${Math.round(st.freeze * 100)} %`);
+  if (st.slow > 0.05) parts.push(`verlangsamt ${Math.round(st.slow * 100)} %`);
+  if (st.haste > 0.03) parts.push(`Raffung ${Math.round(st.haste * 100)} %`);
+  if (st.unarmor) parts.push('bricht Panzer');
+  if (st.bossDmg > 1.05) parts.push(`+${Math.round((st.bossDmg - 1) * 100)} % vs. Boss`);
+  if (st.lifesteal > 0.01) parts.push(`zehrt ${(st.lifesteal * 100).toFixed(1)} %`);
+  if (st.echo > 0.03) parts.push(`Echo ${Math.round(st.echo * 100)} %`);
   return parts.join(' · ') || 'Ein schlichter, ehrlicher Treffer.';
 }
 
