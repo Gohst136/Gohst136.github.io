@@ -588,6 +588,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round
   color: var(--muted);
   margin-bottom: -6px;
 }
+.stack { display: flex; flex-direction: column; gap: 10px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 
@@ -638,7 +639,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round
 .pp-kcal { display: flex; align-items: baseline; gap: 6px; }
 .pp-kcal b { font-size: 34px; letter-spacing: -.03em; }
 .pp-kcal span { color: var(--muted); font-size: 14px; }
-.pp-macros { justify-content: center; }
+.pp-macros { justify-content: center; text-align: center; }
 
 .option-list { display: flex; flex-direction: column; gap: 8px; }
 .option {

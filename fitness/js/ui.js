@@ -1,6 +1,6 @@
 // Bausteine der Oberfläche: Sheets von unten, Toasts, Ringe, Balken, Diagramme.
 
-import { $, el, clamp, tap, num } from './util.js';
+import { $, el, clamp, tap, num, parseNum } from './util.js';
 
 // ————————————————————————————————————————————————— Sheets
 
@@ -251,11 +251,21 @@ export function field(label, input, hint) {
     hint && el('span', { class: 'field-hint', text: hint }));
 }
 
-export function numberInput(value, { min = 0, max = 9999, step = 1, suffix = '', oninput } = {}) {
+/**
+ * `decimal: true` schaltet auf ein Textfeld um — sonst verwirft Safari die
+ * Eingabe, sobald jemand das deutsche Komma tippt.
+ */
+export function numberInput(value, { min = 0, max = 9999, step = 1, suffix = '', decimal = false, oninput } = {}) {
   const input = el('input', {
-    class: 'input', type: 'number', inputmode: 'decimal',
-    value: String(value), min, max, step,
-    oninput: (e) => oninput?.(Number(e.target.value)),
+    class: 'input',
+    type: decimal ? 'text' : 'number',
+    inputmode: 'decimal',
+    autocomplete: 'off',
+    value: decimal ? String(value).replace('.', ',') : String(value),
+    min: decimal ? null : min,
+    max: decimal ? null : max,
+    step: decimal ? null : step,
+    oninput: (e) => oninput?.(decimal ? parseNum(e.target.value) : Number(e.target.value)),
   });
   if (!suffix) return input;
   return el('div', { class: 'input-suffix' }, input, el('span', { text: suffix }));

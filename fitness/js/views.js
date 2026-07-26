@@ -1,9 +1,9 @@
 // Die vier Hauptansichten: Heute, Tagebuch, Training, Profil.
 
-import { el, num, dec, clamp, tap, prettyDate, weekday, lastDays, todayKey, sum, debounce, norm } from './util.js';
+import { el, num, dec, clamp, tap, prettyDate, weekday, lastDays, todayKey, sum, debounce, norm, parseNum } from './util.js';
 import * as state from './state.js';
 import { MEALS } from './state.js';
-import { ACTIVITIES, burnedKcal, bmiInfo, GOALS, ACTIVITY_LEVELS } from './nutrition.js';
+import { ACTIVITIES, burnedKcal, bmiInfo, GOALS, ACTIVITY_LEVELS, metFor, usesSpeed, paceLabel } from './nutrition.js';
 import { openSheet, toast, confirmSheet, calorieRing, macroBar, barChart, lineChart } from './ui.js';
 import { openFoodPicker, openPortionSheet } from './food-picker.js';
 import { startScan } from './scan.js';
@@ -176,7 +176,7 @@ export function renderTrain(root, key) {
       el('span', { class: 'w-icon', text: w.icon || '🏃' }),
       el('div', { class: 'row-main' },
         el('div', { class: 'row-title', text: w.name }),
-        el('div', { class: 'row-sub', text: `${w.minutes} Min` })),
+        el('div', { class: 'row-sub', text: [w.km ? `${dec(w.km)} km` : null, `${w.minutes} Min`].filter(Boolean).join(' · ') })),
       el('span', { class: 'row-kcal', text: `${num(w.kcal)}` }),
       el('button', {
         class: 'row-del', 'aria-label': 'Löschen',
@@ -196,13 +196,17 @@ export function renderTrain(root, key) {
       el('button', { class: 'btn btn-primary btn-sm', onclick: () => openWorkoutSheet(key) }, '＋ Aktivität')));
 
   const days = lastDays(key, 7);
+  const weekKm = sum(days, (k) => sum(state.dayOrEmpty(k).workouts || [], (w) => w.km || 0));
   const chart = el('section', { class: 'card' },
     el('h3', { class: 'card-title', text: 'Letzte 7 Tage' }),
     barChart(days.map((k) => ({
       label: weekday(k),
       value: sum(state.dayOrEmpty(k).workouts || [], (w) => w.kcal),
       highlight: k === key,
-    })), { unit: 'kcal' }));
+    })), { unit: 'kcal' }),
+    weekKm > 0 && el('div', { class: 'kv' },
+      kv('Verbrannt', `${num(sum(days, (k) => sum(state.dayOrEmpty(k).workouts || [], (w) => w.kcal)))} kcal`),
+      kv('Strecke', `${dec(weekKm)} km`)));
 
   root.replaceChildren(head, card, chart, weightCard(key));
 }
@@ -211,9 +215,9 @@ function weightCard(key) {
   const d = state.dayOrEmpty(key);
   const series = state.weightSeries();
   const input = el('input', {
-    class: 'input', type: 'number', inputmode: 'decimal', step: '0.1',
-    placeholder: String(state.get().profile.weight),
-    value: d.weight ? String(d.weight) : '',
+    class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off',
+    placeholder: dec(state.get().profile.weight),
+    value: d.weight ? dec(d.weight) : '',
   });
   return el('section', { class: 'card' },
     el('div', { class: 'card-head' },
@@ -224,7 +228,7 @@ function weightCard(key) {
       el('button', {
         class: 'btn btn-primary btn-sm',
         onclick: () => {
-          const v = Number(input.value);
+          const v = parseNum(input.value);
           if (!v) { toast('Bitte Gewicht eintragen.', 'warn'); return; }
           state.setWeight(key, Math.round(v * 10) / 10);
           tap(); toast('Gespeichert');
@@ -237,17 +241,34 @@ export function openWorkoutSheet(key) {
   const weight = state.get().profile.weight;
   let picked = ACTIVITIES[0];
   let minutes = 30;
+  let km = 0;
 
   const preview = el('div', { class: 'portion-preview' });
   const listBox = el('div', { class: 'list' });
   const search = el('input', { class: 'input input-search', type: 'search', placeholder: 'Aktivität suchen …' });
   const minutesInput = el('input', { class: 'input input-amount', type: 'number', inputmode: 'numeric', value: '30', min: '1', step: '5' });
+  const kmInput = el('input', {
+    class: 'input input-amount', type: 'text', inputmode: 'decimal',
+    placeholder: '0', autocomplete: 'off',
+  });
 
   const draw = () => {
-    const kcal = burnedKcal(picked.met, minutes, weight);
+    const met = metFor(picked, minutes, km);
+    const kcal = burnedKcal(met, minutes, weight);
+    const bits = [`${picked.icon} ${picked.name}`];
+    if (picked.dist && km > 0) bits.push(`${dec(km)} km`);
+    bits.push(`${minutes} Min`);
+    const pace = picked.dist ? paceLabel(picked, km, minutes) : '';
+    if (pace) bits.push(pace);
+
     preview.replaceChildren(
       el('div', { class: 'pp-kcal' }, el('b', { text: num(kcal) }), el('span', { text: 'kcal' })),
-      el('div', { class: 'pp-macros' }, el('span', { text: `${picked.icon} ${picked.name} · ${minutes} Min · ${dec(weight)} kg` })));
+      el('div', { class: 'pp-macros' }, el('span', { text: bits.join(' · ') })),
+      usesSpeed(picked, minutes, km)
+        ? el('p', { class: 'muted tiny', text: 'Tempo fließt in die Schätzung ein' })
+        : null);
+
+    kmBox.classList.toggle('hidden', !picked.dist);
   };
 
   const drawList = () => {
@@ -255,11 +276,16 @@ export function openWorkoutSheet(key) {
     const items = ACTIVITIES.filter((a) => !q || norm(a.name).includes(q));
     listBox.replaceChildren(...items.map((a) => el('button', {
       class: `row row-act${a.id === picked.id ? ' active' : ''}`,
-      onclick: () => { tap(); picked = a; drawList(); draw(); },
+      onclick: () => {
+        tap();
+        picked = a;
+        if (!picked.dist) { km = 0; kmInput.value = ''; }
+        drawList(); draw();
+      },
     },
     el('span', { class: 'w-icon', text: a.icon }),
     el('div', { class: 'row-main' },
-      el('div', { class: 'row-title', text: a.name }),
+      el('div', { class: 'row-title' }, a.name, a.dist && el('span', { class: 'tag', text: 'km' })),
       el('div', { class: 'row-sub', text: `${burnedKcal(a.met, 30, weight)} kcal / 30 Min` })),
     el('span', { class: 'row-plus', text: a.id === picked.id ? '✓' : '' }))));
   };
@@ -269,14 +295,28 @@ export function openWorkoutSheet(key) {
     minutesInput.value = String(minutes);
     draw();
   };
+  const setKm = (v) => {
+    km = clamp(Math.round(v * 10) / 10, 0, 500);
+    kmInput.value = km > 0 ? dec(km) : '';
+    draw();
+  };
   minutesInput.addEventListener('input', () => { minutes = Number(minutesInput.value) || 0; draw(); });
+  kmInput.addEventListener('input', () => { km = clamp(parseNum(kmInput.value), 0, 500); draw(); });
   search.addEventListener('input', debounce(drawList, 100));
+
+  const kmBox = el('div', { class: 'stack' },
+    el('p', { class: 'label-small', text: 'Strecke (optional)' }),
+    el('div', { class: 'amount-row' },
+      el('button', { class: 'step', onclick: () => { tap(); setKm(km - 1); } }, '−'),
+      el('div', { class: 'input-suffix' }, kmInput, el('span', { text: 'km' })),
+      el('button', { class: 'step', onclick: () => { tap(); setKm(km + 1); } }, '＋')));
 
   const sheet = openSheet({
     title: 'Aktivität eintragen',
     full: true,
     body: [
       preview,
+      el('p', { class: 'label-small', text: 'Dauer' }),
       el('div', { class: 'amount-row' },
         el('button', { class: 'step', onclick: () => { tap(); setMinutes(minutes - 5); } }, '−'),
         el('div', { class: 'input-suffix' }, minutesInput, el('span', { text: 'Min' })),
@@ -284,15 +324,18 @@ export function openWorkoutSheet(key) {
       el('div', { class: 'chips' }, ...[15, 30, 45, 60, 90].map((m) => el('button', {
         class: 'chip', onclick: () => { tap(); setMinutes(m); },
       }, `${m} Min`))),
+      kmBox,
       search,
       listBox,
     ],
     footer: el('button', {
       class: 'btn btn-primary btn-wide',
       onclick: () => {
+        const met = metFor(picked, minutes, km);
         state.addWorkout(key, {
-          name: picked.name, icon: picked.icon, met: picked.met,
-          minutes, kcal: burnedKcal(picked.met, minutes, weight),
+          name: picked.name, icon: picked.icon, met,
+          minutes, kcal: burnedKcal(met, minutes, weight),
+          ...(picked.dist && km > 0 ? { km } : {}),
         });
         tap(12); sheet.close(); toast('Eingetragen');
       },

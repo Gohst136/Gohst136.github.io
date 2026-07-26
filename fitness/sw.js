@@ -1,5 +1,5 @@
 // Offline-Cache. VERSION bei jeder Änderung an den Dateien unten hochzählen.
-const VERSION = 'formkurve-v1';
+const VERSION = 'formkurve-v2';
 
 const ASSETS = [
   './',

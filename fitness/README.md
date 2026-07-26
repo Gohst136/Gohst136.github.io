@@ -56,7 +56,7 @@ Ziele, Statistik.
 |---|---|
 | **Heute** | Kalorienring mit Restbudget, Makrobalken, Mahlzeiten auf einen Blick, Wasser |
 | **Tagebuch** | Frühstück, Mittag, Abend, Snacks — jeder Eintrag antippbar und korrigierbar |
-| **Training** | 32 Aktivitäten mit MET-Werten, Verbrauch kommt aufs Tagesbudget drauf, Wochenchart, Gewichtsverlauf |
+| **Training** | 32 Aktivitäten mit MET-Werten, bei Ausdauersport zusätzlich Kilometer, Verbrauch kommt aufs Tagesbudget drauf, Wochenchart, Gewichtsverlauf |
 | **Profil** | Ziel aus Alter, Größe, Gewicht, Aktivität und Vorhaben — oder eigene Zielwerte |
 | **Datenbank** | ~140 Lebensmittel mit Nährwerten pro 100 g/ml, plus eigene Einträge und Favoriten |
 
@@ -71,6 +71,12 @@ der Leiste startet die Foto-Erkennung.
 - **Eiweiß** nach Körpergewicht (1,6–2,0 g/kg), **Fett** auf 27 % der Kalorien,
   der Rest sind Kohlenhydrate.
 - **Sport**: `kcal = MET × 3,5 × kg / 200 × Minuten`.
+- **Strecke**: Bei Wandern, Laufen, Radfahren und Co. lässt sich zusätzlich die
+  Strecke eintragen. Wo das Tempo den Verbrauch bestimmt — Gehen, Laufen,
+  Radfahren, Skaten — wird der MET-Wert daraus abgeleitet statt pauschal
+  angenommen: 10 km in einer Stunde zählen anders als 13 km. Bei Wandern,
+  Schwimmen oder Mountainbike entscheidet eher Gelände als Tempo, dort wird die
+  Strecke nur mitgeschrieben. Die Wochenübersicht summiert die Kilometer.
 
 Die Schätzungen der Foto-Erkennung sind gut für den Alltag, aber kein Laborwert.
 Wenn etwas nicht passt: Menge im Ergebnis anpassen oder unter „Schätzung

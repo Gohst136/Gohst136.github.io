@@ -81,7 +81,7 @@ export function openProfileSheet() {
       el('div', { class: 'grid-3' },
         field('Alter', numberInput(p.age, { min: 10, max: 100, suffix: 'J.', oninput: set('age') })),
         field('Größe', numberInput(p.height, { min: 120, max: 230, suffix: 'cm', oninput: set('height') })),
-        field('Gewicht', numberInput(p.weight, { min: 30, max: 300, step: 0.1, suffix: 'kg', oninput: set('weight') }))),
+        field('Gewicht', numberInput(p.weight, { suffix: 'kg', decimal: true, oninput: set('weight') }))),
       el('p', { class: 'label-small', text: 'Wie aktiv bist du?' }),
       activityList,
       el('p', { class: 'label-small', text: 'Was ist dein Ziel?' }),

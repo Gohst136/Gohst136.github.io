@@ -106,3 +106,9 @@ export function norm(s) {
 }
 
 export const sum = (arr, pick) => arr.reduce((a, x) => a + (pick ? pick(x) : x), 0);
+
+/** Nimmt „10,5" genauso wie „10.5" — auf dem iPhone tippt man mit Komma. */
+export function parseNum(value) {
+  const n = Number(String(value ?? '').replace(',', '.').replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
