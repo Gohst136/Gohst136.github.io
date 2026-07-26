@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0a0d10" />
+<meta name="description" content="Formkurve — Kalorien und Training tracken, mit Nährwert-Erkennung per Kamera." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Formkurve" />
+<title>Formkurve</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ------------------------------------------------------------ Kopf -->
+  <header id="app-header">
+    <div class="head-text">
+      <h1 id="app-title">Heute</h1>
+      <p id="app-sub">—</p>
+    </div>
+    <div id="daybar" class="daybar">
+      <button id="day-today" class="day-today hidden">Heute</button>
+      <button id="day-prev" class="day-arrow" aria-label="Tag zurück">‹</button>
+      <button id="day-next" class="day-arrow" aria-label="Tag vor">›</button>
+    </div>
+  </header>
+
+  <!-- ---------------------------------------------------------- Ansichten -->
+  <main id="views">
+    <section class="view active" id="view-today"></section>
+    <section class="view" id="view-diary"></section>
+    <section class="view" id="view-train"></section>
+    <section class="view" id="view-profile"></section>
+  </main>
+
+  <!-- ------------------------------------------------------------- Tableiste -->
+  <nav id="tabbar">
+    <button class="tab active" data-view="today">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
+      <span>Heute</span>
+    </button>
+    <button class="tab" data-view="diary">
+      <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+      <span>Tagebuch</span>
+    </button>
+
+    <div class="tab-fab">
+      <button id="btn-scan" aria-label="Mahlzeit fotografieren">
+        <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1.1-1.8A1 1 0 0 1 9.7 3.7h4.6a1 1 0 0 1 .9.5L16.3 6h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.3"/></svg>
+      </button>
+    </div>
+
+    <button class="tab" data-view="train">
+      <svg viewBox="0 0 24 24"><path d="M4 10v4M7 7v10M17 7v10M20 10v4M7 12h10"/></svg>
+      <span>Training</span>
+    </button>
+    <button class="tab" data-view="profile">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1-4 4-6 7.5-6s6.5 2 7.5 6"/></svg>
+      <span>Profil</span>
+    </button>
+  </nav>
+</div>
+
+<div id="sheet-host"></div>
+<div id="cam-host"></div>
+<div id="toast-host"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
