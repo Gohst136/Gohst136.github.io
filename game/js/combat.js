@@ -10,7 +10,7 @@ import {
 import { clamp, TAU, withAlpha, lighten, darken, rng, fmt } from './util.js';
 import { sfx } from './audio.js';
 
-const MAX_PARTICLES = 240;
+
 
 /* Jede Fünferstaffel bekommt einen eigenen Himmel — man sieht am Hintergrund,
    wie weit man ist. */
@@ -40,6 +40,9 @@ export class Arena {
 
     this.running = false;
     this.last = 0;
+    this.fps = 60;
+    this._frames = 0;
+    this._fpsT = 0;
     this.shake = 0;
     this.time = 0;
     this.banner = null;
@@ -67,12 +70,24 @@ export class Arena {
     canvas.addEventListener('pointerdown', () => this.tryFocus(), { passive: true });
   }
 
+  /* Alle Regler der gewählten Darstellungsqualität an einem Ort. */
+  get q() {
+    return (this.hooks.getQuality && this.hooks.getQuality()) || {
+      dpr: 2, particles: 240, stars: true, rings: 26, numbers: 24,
+      shake: 1, trail: 12, glow: true, burstMul: 1
+    };
+  }
+
   /* ---------------- Aufbau ---------------- */
 
   resize() {
     const rect = this.cv.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    /* Auf einem versteckten Bildschirm hat das Feld keine Größe — dann
+       merken und beim nächsten Start nachholen. Sonst greift eine im Kern
+       geänderte Darstellungsstufe erst viel später. */
+    if (!rect.width || !rect.height) { this._needResize = true; return; }
+    this._needResize = false;
+    this.dpr = Math.min(this.q.dpr, window.devicePixelRatio || 1);
     this.W = Math.round(rect.width);
     this.H = Math.round(rect.height);
     this.cv.width = Math.round(this.W * this.dpr);
@@ -143,6 +158,7 @@ export class Arena {
   }
 
   start() {
+    if (this._needResize) this.resize();
     if (this.running) return;
     this.running = true;
     this.last = performance.now();
@@ -229,6 +245,15 @@ export class Arena {
     if (dt < 0) dt = 0;
     if (dt > 90) dt = 90;
     this.time += dt;
+
+    /* Laufende Bildrate — für die Anzeige und die automatische Absenkung. */
+    this._frames++;
+    this._fpsT += dt;
+    if (this._fpsT >= 700) {
+      this.fps = this._frames / (this._fpsT / 1000);
+      this._frames = 0; this._fpsT = 0;
+    }
+
     this._update(dt);
     this._render();
     requestAnimationFrame(this._loop);
@@ -502,8 +527,10 @@ export class Arena {
       p.y += p.vy * s;
       p.spin += s * 6;
 
-      p.trail.push(p.x, p.y);
-      if (p.trail.length > 12) p.trail.splice(0, 2);
+      if (this.q.trail > 0) {
+        p.trail.push(p.x, p.y);
+        if (p.trail.length > this.q.trail) p.trail.splice(0, 2);
+      }
 
       if (p.y < -60 || p.x < -60 || p.x > this.W + 60 || p.y > this.H + 60) {
         this.shots.splice(i, 1); continue;
@@ -601,14 +628,14 @@ export class Arena {
     if (enemy.affix === 'panzer' && !opt.unarmor) amount *= 0.6;
     enemy.hp -= amount;
     enemy.hitT = 90;
-    if (!opt.silent) {
+    if (!opt.silent && (this.q.numbers > 8 || opt.crit || this.numbers.length < 3)) {
       this.numbers.push({
         x: enemy.x + (Math.random() - 0.5) * 14, y: enemy.y - enemy.radius * 0.4,
         v: -34 - Math.random() * 20, t: 0, life: 720,
         text: fmt(amount), crit: !!opt.crit,
         color: opt.crit ? '#ffe066' : (opt.color || '#ffffff')
       });
-      if (this.numbers.length > 24) this.numbers.shift();
+      if (this.numbers.length > this.q.numbers) this.numbers.shift();
     }
     if (!opt.dot) {
       const core = this.hooks.getCore();
@@ -648,10 +675,11 @@ export class Arena {
   /* ---------------- Effekte ---------------- */
 
   _particle(x, y, vx, vy, color, life, r) {
-    if (this.parts.length > MAX_PARTICLES) this.parts.shift();
+    if (this.parts.length > this.q.particles) this.parts.shift();
     this.parts.push({ x, y, vx, vy, color, life, max: life, r: r || 2 });
   }
   _burst(x, y, color, n) {
+    n = Math.max(1, Math.round(n * this.q.burstMul));
     for (let i = 0; i < n; i++) {
       const ang = Math.random() * TAU, sp = 40 + Math.random() * 190;
       this._particle(x, y, Math.cos(ang) * sp, Math.sin(ang) * sp, color,
@@ -660,7 +688,7 @@ export class Arena {
   }
   _ring(x, y, r0, r1, color, life) {
     /* Bei Massenbetrieb lieber ein paar Ringe weglassen als Bilder. */
-    if (this.flashes.length > 26) return;
+    if (this.flashes.length > this.q.rings) return;
     this.flashes.push({ kind: 'ring', x, y, r0, r1, color, t: 0, life });
   }
 
@@ -690,8 +718,9 @@ export class Arena {
   _render() {
     const g = this.ctx, W = this.W, H = this.H;
     g.save();
-    if (this.shake > 0.4) {
-      g.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+    const shake = this.shake * this.q.shake;
+    if (shake > 0.4) {
+      g.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
     }
 
     /* Himmel der aktuellen Staffel — einmal gezeichnet, dann gestempelt. */
@@ -699,7 +728,7 @@ export class Arena {
     g.drawImage(this.backdrop, 0, 0, W, H);
 
     /* Eine wandernde Sternenlage darüber */
-    if (this.stars) {
+    if (this.stars && this.q.stars) {
       const off = (this.time * 0.014) % H;
       g.globalAlpha = 0.7;
       g.drawImage(this.stars, 0, off);
@@ -722,7 +751,7 @@ export class Arena {
     this._drawBanner(g);
 
     /* Roter Rand, wenn der Kern getroffen wurde */
-    if (this.hurt > 0.01) {
+    if (this.hurt > 0.01 && this.q.glow) {
       const v = g.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, H * 0.62);
       v.addColorStop(0, 'rgba(255,0,60,0)');
       v.addColorStop(1, `rgba(255,20,70,${0.42 * this.hurt})`);
@@ -736,7 +765,7 @@ export class Arena {
   /* Gegnerkörper einmal vorzeichnen und danach nur noch stempeln — Verläufe
      und Weichzeichner pro Bild und Gegner sind auf dem Handy zu teuer. */
   _sprite(type, radius, boss, hit) {
-    const key = `${type.id}|${Math.round(radius)}|${boss ? 1 : 0}|${hit ? 1 : 0}`;
+    const key = `${type.id}|${Math.round(radius)}|${boss ? 1 : 0}|${hit ? 1 : 0}|${this.q.glow ? 1 : 0}`;
     let sp = this.sprites.get(key);
     if (sp) return sp;
 
@@ -760,8 +789,10 @@ export class Arena {
     grad.addColorStop(0, withAlpha(lighten(col, 0.55), 0.98));
     grad.addColorStop(1, withAlpha(darken(col, 0.25), boss ? 0.92 : 0.7));
     g.fillStyle = grad;
-    g.shadowBlur = boss ? 26 : 12;
-    g.shadowColor = withAlpha(col, 0.9);
+    if (this.q.glow) {
+      g.shadowBlur = boss ? 26 : 12;
+      g.shadowColor = withAlpha(col, 0.9);
+    }
     g.fill();
     g.shadowBlur = 0;
     g.lineWidth = 2;
@@ -871,10 +902,12 @@ export class Arena {
       g.translate(p.x, p.y);
       /* Schein als zweiter, größerer Kreis — deutlich günstiger als
          shadowBlur, und bei vielen Geschossen macht das den Unterschied. */
-      g.beginPath();
-      g.arc(0, 0, p.r * 2.1, 0, TAU);
-      g.fillStyle = withAlpha(c.glow, 0.22);
-      g.fill();
+      if (this.q.glow) {
+        g.beginPath();
+        g.arc(0, 0, p.r * 2.1, 0, TAU);
+        g.fillStyle = withAlpha(c.glow, 0.22);
+        g.fill();
+      }
       g.fillStyle = withAlpha(lighten(c.glow, 0.35), 0.98);
       if (p.kind === 'blade') {
         g.rotate(Math.atan2(p.vy, p.vx));
@@ -997,8 +1030,9 @@ export class Arena {
     grd.addColorStop(0.5, withAlpha(lighten(col, 0.3), 0.95));
     grd.addColorStop(1, withAlpha(col, 0.7));
     g.fillStyle = this.core.hitT > 0 ? '#ff6b8b' : grd;
-    g.shadowBlur = 30; g.shadowColor = withAlpha(col, 0.95);
+    if (this.q.glow) { g.shadowBlur = 30; g.shadowColor = withAlpha(col, 0.95); }
     g.fill();
+    g.shadowBlur = 0;
     g.restore();
 
     /* Schutzbogen als Lebensanzeige */

@@ -4,10 +4,10 @@
 import {
   ELEMENTS, SPECIALS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, TIERS,
   MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence, AFFIXES,
-  MERCHANT, isSpecial, craftCost
+  MERCHANT, isSpecial, craftCost, QUALITY, QUALITY_ORDER
 } from './data.js';
 import {
-  ability, canFuse, reforgeCost, describe, composition
+  ability, canFuse, describe, composition
 } from './fusion.js';
 import { glyphURL } from './glyph.js';
 import { ability as abilityOf, baseId } from './fusion.js';
@@ -701,6 +701,37 @@ function renderSettings() {
   const host = $('#settingsList');
   if (!host) return;
   host.innerHTML = '';
+
+  /* Darstellungsqualität — der wichtigste Regler für ältere Geräte. */
+  const qRow = document.createElement('div');
+  qRow.className = 'upg quality-row';
+  qRow.innerHTML =
+    '<div class="uico">◐</div>' +
+    '<div class="ubody"><div class="un">Darstellung ' +
+    '<span class="ulv" id="fpsNow">– fps</span></div>' +
+    `<div class="ud" id="qualityDesc">${QUALITY[G.S.opt.quality].desc}</div></div>`;
+  host.appendChild(qRow);
+
+  const seg = document.createElement('div');
+  seg.className = 'seg quality-seg';
+  for (const key of QUALITY_ORDER) {
+    const b = document.createElement('button');
+    b.textContent = QUALITY[key].name;
+    b.className = key === G.S.opt.quality ? 'is-on' : '';
+    b.addEventListener('click', () => {
+      G.setQuality(key, true);
+      sfx.ui();
+      applyQualityClass();
+      if (ui.arena) ui.arena.resize();
+      toast('Darstellung: ' + QUALITY[key].name);
+      renderSettings();
+    });
+    seg.appendChild(b);
+  }
+  host.appendChild(seg);
+  /* Letzten gemessenen Wert gleich anzeigen — gemessen wird im Kampf. */
+  if (ui.arena && ui.arena.fps) showFps(ui.arena.fps);
+
   const rows = [
     { key: 'autoMerge', icon: '⇄', name: 'Auto-Verschmelzen',
       desc: 'Gleiche Fähigkeiten im Vorrat legen sich von selbst zusammen. Ausgerüstete bleiben unangetastet.' },
@@ -728,6 +759,23 @@ function renderSettings() {
     });
     row.appendChild(btn);
     host.appendChild(row);
+  }
+}
+
+/* Die teuren CSS-Effekte (Weichzeichner hinter Leisten, Kartenglanz) hängen
+   an einer Klasse am <body> — so greift die Einstellung überall auf einmal. */
+export function applyQualityClass() {
+  const q = QUALITY[G.S.opt.quality] || QUALITY.hoch;
+  document.body.classList.toggle('no-blur', !q.blur);
+  document.body.classList.toggle('no-shine', !q.shine);
+}
+
+/* Laufende Bildrate in den Einstellungen anzeigen. */
+export function showFps(v) {
+  const el = $('#fpsNow');
+  if (el) {
+    el.textContent = Math.round(v) + ' fps';
+    el.style.color = v >= 50 ? 'var(--good)' : v >= 35 ? 'var(--gold)' : 'var(--danger)';
   }
 }
 
@@ -847,13 +895,13 @@ export function openSheet(id, ctx = {}) {
       closeSheet();
       switchTo('forge');
     });
-    add(`Verwerten +${fmt(Math.round(reforgeCost(id) * 0.55))} ✦`, 'danger ghost', () => {
+    add(`Verwerten +${fmt(G.dissolveValue(id))} ✦`, 'danger ghost', () => {
       const r = G.dissolve(u);
       if (r.ok) toast(`Zu ${fmt(r.gain)} ✦ aufgelöst.`, 'good');
       closeSheet();
     });
   } else {
-    const cost = reforgeCost(id);
+    const cost = G.reforgePrice(id);
     add(`Nachschmieden ${fmt(cost)} ✦`, 'primary', () => {
       const r = G.reforge(id);
       toast(r.ok ? `${a.name} liegt im Vorrat.` : r.msg, r.ok ? 'good' : 'bad');

@@ -928,3 +928,24 @@ img { display: block; max-width: 100%; }
   animation: newsPulse 1.4s ease-in-out infinite;
 }
 @keyframes newsPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ------------------------------------------------------------------ *
+ * Darstellungsqualität: die teuren Effekte hängen an diesen Klassen.
+ * ------------------------------------------------------------------ */
+body.no-blur .res,
+body.no-blur #tabs,
+body.no-blur .arena-btn,
+body.no-blur .overlay-msg,
+body.no-blur .sheet-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.no-blur #tabs { background: #0b0418; }
+body.no-blur .overlay-msg { background: rgba(8, 2, 18, 0.95); }
+body.no-shine .card .shine { display: none; }
+body.no-shine .focus-btn.ready { animation: none; }
+body.no-shine .tab.has-news::after { animation: none; }
+
+.quality-row { border-bottom: none; padding-bottom: 4px; }
+.quality-seg { display: flex; width: 100%; margin: 0 0 4px; }
+.quality-seg button { flex: 1 1 0; min-width: 0; }

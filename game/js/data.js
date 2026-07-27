@@ -326,6 +326,40 @@ export function craftCost(code, made) {
   const base = ELEMENTS[code].craft;
   return Math.ceil(base * Math.pow(1 + made / BAL.craftDiv, BAL.craftExp));
 }
+
+/* Was `n` Runen am Stück kosten, wenn man schon `from` davon hat.
+   Geschlossene Form statt Schleife — bei tiefen Fusionen geht es um
+   Tausende von Runen, und der Preis steht in jeder Kodexkarte. */
+export function runeBlockCost(code, from, n) {
+  if (n <= 0) return 0;
+  const base = ELEMENTS[code].craft, D = BAL.craftDiv, E = BAL.craftExp;
+  const F = (x) => Math.pow(1 + x / D, E + 1);
+  return base * D / (E + 1) * (F(from + n) - F(from));
+}
+
+/* ------------------------------------------------------------------ *
+ * DARSTELLUNGSQUALITÄT
+ * Ältere Android-Geräte kommen mit voller Auflösung und allen Effekten
+ * nicht mit. Die Stufen greifen sofort, ohne Neustart.
+ * ------------------------------------------------------------------ */
+export const QUALITY = {
+  hoch: {
+    name: 'Hoch', desc: 'Alle Effekte, volle Auflösung.',
+    dpr: 2, particles: 240, stars: true, rings: 26, numbers: 24,
+    shake: 1, trail: 12, glow: true, blur: true, shine: true, burstMul: 1
+  },
+  mittel: {
+    name: 'Mittel', desc: 'Weniger Partikel, etwas gröber — spürbar flüssiger.',
+    dpr: 1.5, particles: 110, stars: true, rings: 12, numbers: 12,
+    shake: 0.7, trail: 8, glow: true, blur: false, shine: false, burstMul: 0.5
+  },
+  sparsam: {
+    name: 'Sparsam', desc: 'Nur das Nötigste. Für ältere Geräte.',
+    dpr: 1, particles: 36, stars: false, rings: 4, numbers: 6,
+    shake: 0, trail: 0, glow: false, blur: false, shine: false, burstMul: 0.2
+  }
+};
+export const QUALITY_ORDER = ['hoch', 'mittel', 'sparsam'];
 /* Bosse sollen eine Wand sein, an der man einmal aufrüstet — keine Mauer.
    Früh mild, später deutlich fordernder. */
 export const bossHpMult = (wave) => 9 + wave * 0.18;

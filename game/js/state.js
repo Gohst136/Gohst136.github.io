@@ -5,9 +5,10 @@
 import {
   ELEMENTS, SPECIALS, UNLOCK_ORDER, CORE_UPGRADES, upgradeCost, coreHp,
   MILESTONES, TRANSCEND_WAVE, starsFor, starDamage, starEssence,
-  craftCost, MERCHANT, merchantOffers, isSpecial
+  craftCost, runeBlockCost, MERCHANT, merchantOffers, isSpecial, specialPrice,
+  QUALITY, QUALITY_ORDER
 } from './data.js';
-import { ability, baseId, fusionId, canFuse, reforgeCost, levelOfId } from './fusion.js';
+import { ability, baseId, fusionId, canFuse, levelOfId, parseId } from './fusion.js';
 import { saveState, loadState, clearState, uid, clamp } from './util.js';
 
 export const SLOT_WAVES = [4, 9, 15, 22, 30];
@@ -31,7 +32,7 @@ function freshState() {
     core: { hp: 0, regen: 0, focus: 0, greed: 0 },
     stats: { kills: 0, fusions: 0, essenceTotal: 0, deepest: 1, waves: 0 },
     seen: { intro: false },
-    opt: { autoMerge: false, sound: true },
+    opt: { autoMerge: false, sound: true, quality: 'hoch', qualityAuto: true },
     crafted: {},                       /* wie viele Runen je Element schon geschmiedet */
     merchant: { nextAt: 0, until: 0, seed: 0, bought: {} },
     stars: 0,
@@ -61,7 +62,8 @@ export function init() {
     S.core = Object.assign({ hp: 0, regen: 0, focus: 0, greed: 0 }, raw.core || {});
     S.stats = Object.assign({ kills: 0, fusions: 0, essenceTotal: 0, deepest: 1 }, raw.stats || {});
     S.seen = Object.assign({ intro: false }, raw.seen || {});
-    S.opt = Object.assign({ autoMerge: false, sound: true }, raw.opt || {});
+    S.opt = Object.assign({ autoMerge: false, sound: true, quality: 'hoch', qualityAuto: true }, raw.opt || {});
+    if (!QUALITY[S.opt.quality]) S.opt.quality = 'hoch';
     S.mile = Object.assign({}, raw.mile || {});
     S.stars = raw.stars || 0;
     S.prestiges = raw.prestiges || 0;
@@ -192,6 +194,55 @@ export function unlockElement(code) {
 /* Was die nächste Rune dieses Elements kostet. */
 export const runeCost = (code) => craftCost(code, S.crafted[code] || 0);
 
+export const quality = () => QUALITY[S.opt.quality] || QUALITY.hoch;
+
+export function setQuality(key, manual) {
+  if (!QUALITY[key]) return false;
+  S.opt.quality = key;
+  if (manual) S.opt.qualityAuto = false;
+  persist();
+  emit('quality');
+  return true;
+}
+
+/* Nachschmieden kostet dasselbe wie die Runen selbst — plus einen Aufschlag
+   dafür, dass einem das Verschmelzen abgenommen wird. Alles andere wäre ein
+   Schlupfloch: eine tiefe Fähigkeit wäre im Kodex vierzigmal billiger als
+   dieselben Runen einzeln, und ohne Fusionsdeckel ließe sich das endlos
+   hochschaukeln. Fremdrunen rechnen zum Händlerpreis, sonst bräuchte man
+   den Händler nie wieder. */
+export function reforgePrice(id) {
+  const counts = parseId(id);
+  let sum = 0;
+  for (const [c, n] of Object.entries(counts)) {
+    sum += isSpecial(c)
+      ? specialPrice(c, S.bestWave) * 2.5 * n
+      : runeBlockCost(c, S.crafted[c] || 0, n);
+  }
+  return Math.ceil(sum * 1.15);
+}
+
+/* Beim Verwerten wandern die Runen zurück ins Konto — der Preis wird also
+   an derselben Stelle der Kurve berechnet, an der man sie gekauft hat.
+   Sonst könnte man mit Kaufen und Verwerten Essenz drucken. */
+export function dissolveValue(id) {
+  const counts = parseId(id);
+  let sum = 0;
+  for (const [c, n] of Object.entries(counts)) {
+    if (isSpecial(c)) { sum += specialPrice(c, S.bestWave) * 0.4 * n; continue; }
+    const from = Math.max(0, (S.crafted[c] || 0) - n);
+    sum += runeBlockCost(c, from, n);
+  }
+  return Math.round(sum * 0.55);
+}
+
+function addCrafted(id, sign) {
+  for (const [c, n] of Object.entries(parseId(id))) {
+    if (isSpecial(c)) continue;
+    S.crafted[c] = Math.max(0, (S.crafted[c] || 0) + sign * n);
+  }
+}
+
 export function craftRune(code) {
   if (!S.unlocked.includes(code)) return { ok: false, msg: 'Noch nicht freigeschaltet.' };
   if (S.inv.length >= INV_LIMIT) return { ok: false, msg: 'Vorrat voll — verwerte etwas.' };
@@ -206,8 +257,9 @@ export function craftRune(code) {
 export function reforge(id) {
   if (!S.codex[id]) return { ok: false, msg: 'Noch nicht entdeckt.' };
   if (S.inv.length >= INV_LIMIT) return { ok: false, msg: 'Vorrat voll — verwerte etwas.' };
-  const cost = reforgeCost(id);
-  if (!spend(cost)) return { ok: false, msg: `Kostet ${cost} ✦.` };
+  const cost = reforgePrice(id);
+  if (!spend(cost)) return { ok: false, msg: 'Zu wenig Essenz.' };
+  addCrafted(id, +1);
   const e = addToInv(id);
   S.codex[id].n++;
   touch('inv');
@@ -288,7 +340,8 @@ export function ensureNotStuck() {
 export function dissolve(u) {
   const e = invEntry(u);
   if (!e) return { ok: false };
-  const gain = Math.round(reforgeCost(e.id) * 0.55);
+  const gain = dissolveValue(e.id);
+  addCrafted(e.id, -1);
   S.inv = S.inv.filter(x => x.u !== u);
   S.deck = S.deck.map(x => (x === u ? null : x));
   addEssence(gain);

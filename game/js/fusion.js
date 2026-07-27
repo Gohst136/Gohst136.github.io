@@ -12,8 +12,9 @@ import {
 } from './data.js';
 import { hash32, rng, mixMany, lighten, clamp } from './util.js';
 
-/* Kein Deckel mehr: die Kosten bremsen, nicht eine harte Grenze. */
-export const MAX_LEVEL = 4096;
+/* Kein Deckel. Gebremst wird über die Kosten, nicht über eine Schranke —
+   und die wachsen schneller als alles, was man dagegen aufbringen kann. */
+export const MAX_LEVEL = Infinity;
 
 /* ---------- ID <-> Signatur ---------------------------------------- */
 
@@ -183,9 +184,7 @@ export function ability(id) {
 export function canFuse(idA, idB) {
   if (!idA || !idB) return { ok: false, reason: 'Zwei Fähigkeiten auswählen.' };
   const lvl = levelOfId(idA) + levelOfId(idB);
-  if (lvl > MAX_LEVEL) {
-    return { ok: false, reason: 'Selbst der Aether hat irgendwo ein Ende.' };
-  }
+  if (!Number.isFinite(lvl)) return { ok: false, reason: 'Diese Zahl kennt der Aether nicht.' };
   return { ok: true, id: fusionId(idA, idB) };
 }
 
@@ -193,14 +192,6 @@ export function fuse(idA, idB) {
   const check = canFuse(idA, idB);
   if (!check.ok) throw new Error(check.reason);
   return ability(check.id);
-}
-
-/* Kosten, um eine bereits entdeckte Fähigkeit erneut zu schmieden. */
-export function reforgeCost(id) {
-  const lvl = levelOfId(id);
-  const rune = Object.entries(parseId(id))
-    .reduce((s, [c, n]) => s + ELEMENTS[c].craft * n, 0);
-  return Math.round(rune * 1.25 + 4 * Math.pow(lvl, 1.7));
 }
 
 /* Kurzer Beschreibungstext für die Detailansicht. */
