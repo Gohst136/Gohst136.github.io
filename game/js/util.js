@@ -35,9 +35,14 @@ export const pick = (arr, r) => arr[Math.floor(r() * arr.length) % arr.length];
 export function fmt(n) {
   n = Math.round(n);
   if (Math.abs(n) < 1000) return String(n);
-  const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx'];
+  if (!Number.isFinite(n)) return '∞';
+  const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Ok', 'No', 'De', 'Ud', 'Dd'];
   let u = -1, v = n;
   while (Math.abs(v) >= 1000 && u < units.length - 1) { v /= 1000; u++; }
+  /* 999,7 würde sonst als "1000B" statt "1.00T" erscheinen. */
+  if (Math.abs(v) >= 999.5 && u < units.length - 1) { v /= 1000; u++; }
+  /* Jenseits der Namensliste in Zehnerpotenzen weiter. */
+  if (Math.abs(v) >= 1000) return v.toExponential(2).replace('e+', '·10^');
   return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + units[u];
 }
 

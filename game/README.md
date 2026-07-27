@@ -53,13 +53,18 @@ nachspielt (`BAL` in `js/data.js` sind die Regler). Gemessene Marken:
 | 40 | 4 h | | Schatten | 1,3 h |
 | 75 | 19 h | | Arkan | 3,8 h |
 
-Zwei Bremsen halten das im Gleichgewicht:
+Drei Bremsen halten das im Gleichgewicht:
 
 * **Jede weitere Rune desselben Elements kostet mehr** (die 1. Feuerrune 6 ✦,
   die 41. schon 755 ✦). Reine Kaufkraft bringt einen also nicht durch die
   Wellen — man muss die Mischung verbessern, nicht die Menge.
 * **Neue Elemente sind an Wellen gebunden**, nicht nur an Essenz. Man kann
   sich nicht an der Schwierigkeitskurve vorbeikaufen.
+* **Nachschmieden und Verwerten hängen am selben Runenkonto.** Der Kodexpreis
+  ist der Preis der enthaltenen Runen plus 15 % Aufschlag, das Verwerten gibt
+  55 % zurück und schreibt die Runen dem Konto wieder gut. Ohne das wäre eine
+  tiefe Fähigkeit im Kodex ein Vielfaches billiger als dieselben Runen
+  einzeln — und ohne Fusionsdeckel ließe sich daraus eine Essenzquelle bauen.
 
 Bosse alle fünf Wellen sind die Wände: dort hängt man ein paar Minuten,
 rüstet auf und bricht durch. Genau dafür ist auch der Händler da.
@@ -84,8 +89,14 @@ rüstet auf und bricht durch. Genau dafür ist auch der Händler da.
   (setzt Abklingzeiten zurück), *Leere* (bricht Panzer, +110 % gegen Bosse),
   *Kristall* (durchbohrt Reihen, ×4,4 kritisch) und *Stern* (langsam, aber
   reißt Löcher in ganze Wellen). Sie verschmelzen wie alles andere.
-* **Elf Seltenheitsstufen** bis *Singularität*, kein Deckel auf der
-  Fusionstiefe — nur die Kosten bremsen.
+* **Elf Seltenheitsstufen** bis *Singularität*, **kein Deckel** auf der
+  Fusionstiefe. Gebremst wird ausschließlich über die Kosten — und die
+  wachsen schneller als alles, was man dagegen aufbringen kann.
+* **Darstellungsqualität** in drei Stufen (Hoch / Mittel / Sparsam). Sie
+  ändert Auflösung, Partikelzahl, Sternenlage und die teuren
+  CSS-Weichzeichner. Beim ersten Start misst das Spiel einmal die Bildrate
+  und senkt die Stufe selbst ab, wenn es nicht rund läuft; eine eigene Wahl
+  wird danach nie überstimmt.
 * **Gegner-Eigenschaften** ab Welle 6: gepanzert, flink, teilend, zäh — jede
   mit eigenem Aussehen.
 * **Transzendenz** ab Welle 25: Lauf zurücksetzen, dafür Sterne für dauerhaft

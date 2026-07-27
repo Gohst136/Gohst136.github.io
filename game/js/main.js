@@ -27,6 +27,7 @@ const arena = new Arena($('#arena'), {
   getDeck:  () => G.deckAbilities(),
   getWave:  () => G.S.wave,
   getCore:  () => G.coreStats(),
+  getQuality: () => G.quality(),
   onEssence: (n, kind) => {
     G.addEssence(n);
     if (kind === 'kill') G.addKill();
@@ -128,6 +129,36 @@ function idleTick() {
 }
 
 setInterval(idleTick, 1000);
+
+/* ---------------- Darstellung ---------------- *
+   Einmal pro Installation nachsehen, ob das Gerät die volle Darstellung
+   schafft. Wer selbst etwas eingestellt hat, wird nicht überstimmt. */
+UI.applyQualityClass();
+
+let fpsSamples = [];
+function watchPerformance() {
+  if (!arena.running || document.hidden || UI.currentScreen() !== 'battle') return;
+  UI.showFps(arena.fps);
+  if (!G.S.opt.qualityAuto) return;
+
+  fpsSamples.push(arena.fps);
+  if (fpsSamples.length < 8) return;              /* gut fünf Sekunden sammeln */
+  const avg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
+  fpsSamples = [];
+
+  const stufe = avg < 26 ? 'sparsam' : avg < 42 ? 'mittel' : null;
+  if (stufe && stufe !== G.S.opt.quality) {
+    G.setQuality(stufe, false);
+    UI.applyQualityClass();
+    arena.resize();
+    UI.toast(`Darstellung auf „${stufe === 'sparsam' ? 'Sparsam' : 'Mittel'}" gesetzt — ` +
+             'im Kern änderbar.', 'good');
+  }
+  /* Nach der ersten Einschätzung nicht weiter dazwischenreden. */
+  G.S.opt.qualityAuto = false;
+  G.persist();
+}
+setInterval(watchPerformance, 700);
 
 /* ---------------- Navigation ---------------- */
 
