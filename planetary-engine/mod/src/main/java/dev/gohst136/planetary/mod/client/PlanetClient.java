@@ -148,7 +148,9 @@ public final class PlanetClient {
         float sl = (float) Math.sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
         sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
         PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
-        RenderSystem.clear(256, Minecraft.ON_OSX);   // planet wins over the vanilla world wherever it covers the screen
+        // planet mode owns the whole picture: black space (stars are added by the atmosphere pass), depth reset
+        RenderSystem.clearColor(0f, 0f, 0f, 1f);
+        RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
         renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
     }
 

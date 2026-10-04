@@ -119,18 +119,36 @@ final class PlanetShaders {
                 return vec2(-b - q, -b + q);
             }
 
+            float hash3(vec3 p) {
+                p = fract(p * 0.3183099 + 0.1);
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+
+            // sparse point stars on the direction sphere
+            vec3 stars(vec3 d) {
+                vec3 sp = d * 180.0, c = floor(sp);
+                float h = hash3(c);
+                vec3 o = vec3(hash3(c + 1.0), hash3(c + 2.0), hash3(c + 3.0)) - 0.5;
+                float dist = length(fract(sp) - 0.5 - o * 0.6);
+                float star = step(0.985, h) * smoothstep(0.22, 0.0, dist) * (0.35 + 0.65 * hash3(c + 7.0));
+                return vec3(star) * mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 0.9, 0.8), hash3(c + 11.0));
+            }
+
             void main() {
                 // near-plane point: with far=1e9 the far-plane point sits at infinity (w ~ 0 -> NaN)
                 vec4 v = uInvProj * vec4(vNdc, -1.0, 1.0);
                 vec3 d = normalize(transpose(mat3(uView)) * normalize(v.xyz / v.w));
                 if (any(isnan(d))) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
                 float mu = dot(d, uUp);
-                vec2 atm = sphere(mu, uAtmH);
-                if (atm.y <= 0.0 || atm.x > atm.y) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-                float s0 = max(atm.x, 0.0), s1 = atm.y;
                 vec2 gnd = sphere(mu, 0.0);
-                if (gnd.x < gnd.y && gnd.x > 0.0) s1 = min(s1, gnd.x);
-                if (s1 <= s0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+                bool hitsPlanet = gnd.x < gnd.y && gnd.x > 0.0;
+                vec3 starCol = hitsPlanet ? vec3(0.0) : stars(d);
+                vec2 atm = sphere(mu, uAtmH);
+                if (atm.y <= 0.0 || atm.x > atm.y) { fragColor = vec4(starCol, 1.0); return; }
+                float s0 = max(atm.x, 0.0), s1 = atm.y;
+                if (hitsPlanet) s1 = min(s1, gnd.x);
+                if (s1 <= s0) { fragColor = vec4(starCol, 1.0); return; }
 
                 const int N = 16;
                 float ds = (s1 - s0) / float(N);
@@ -167,7 +185,7 @@ final class PlanetShaders {
                 }
                 float tView = exp(-(BR.g * odR + BM * 1.1 * odM));
                 vec3 col = 1.0 - exp(-L * 22.0);
-                fragColor = vec4(col, tView);
+                fragColor = vec4(col + starCol * tView, tView);   // stars shine through the atmosphere, dimmed
             }
             """;
 
