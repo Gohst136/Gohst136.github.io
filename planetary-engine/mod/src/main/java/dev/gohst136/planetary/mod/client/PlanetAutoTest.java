@@ -39,6 +39,7 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished;
+    private static long holdStartNanos;
     private static long lastTransitNanos;
     private static boolean transit;          // phase 2: continuous descent without holds
     private static int tFrames, tFallbackFrames, tHoleFrames, tMaxFallback, tMaxHoles, tMerges;
@@ -149,7 +150,9 @@ final class PlanetAutoTest {
         if (stop >= STOPS.length) return;
         frames++;
         if (hold == 0) return;
-        if (++hold < HOLD_FRAMES) return;
+        if (hold == 1) holdStartNanos = System.nanoTime();
+        // wait until streaming has really caught up (max 15 s), so each stop shows the settled state
+        if (++hold < HOLD_FRAMES || (!renderer.settled() && System.nanoTime() - holdStartNanos < 15_000_000_000L)) return;
         // steady state reached at this altitude: record stats now, screenshot at the END of this frame
         // (RenderGuiEvent.Post), i.e. after the planet and the debug overlay have been drawn
         pendingName = String.format("alt_%08.0fm.png", STOPS[stop]);

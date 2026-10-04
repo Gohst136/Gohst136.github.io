@@ -42,7 +42,8 @@ public final class HybridTerrain implements TerrainSampler {
     @Override
     public double unresolvedDetail(double cell) {
         // detail layer: roughly 6% slope until it saturates at its amplitude (it is fully missing above fadeEnd)
-        return macro.unresolvedDetail(cell) + Math.min(detailAmplitude, detailSlope * cell);
+        // the layer has 1 m resolution (one value per block column): cells of <= 1 m resolve it completely
+        return macro.unresolvedDetail(cell) + Math.min(detailAmplitude, detailSlope * Math.max(0.0, cell - 1.0));
     }
 
     /** Heuristic, not provable: vanilla terrain has cliffs; bounds saturate at the planet's min/max radius anyway. */

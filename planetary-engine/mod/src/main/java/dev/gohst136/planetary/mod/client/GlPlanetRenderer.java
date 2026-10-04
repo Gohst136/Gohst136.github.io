@@ -320,6 +320,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         }
     }
 
+    /** True when every selected patch is drawn from its own mesh and no work is pending. */
+    boolean settled() { return inFlight.isEmpty() && finished.isEmpty() && fallbackLastFrame == 0 && holesLastFrame == 0; }
+
     int fallbackLastFrame() { return fallbackLastFrame; }
     int holesLastFrame() { return holesLastFrame; }
 
