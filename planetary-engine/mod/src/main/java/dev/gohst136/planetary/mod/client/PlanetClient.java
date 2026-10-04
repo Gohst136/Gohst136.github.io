@@ -184,6 +184,14 @@ public final class PlanetClient {
         return true;
     }
 
+    /** Topmost non-air block of a client-side column (full scan; diagnostics only). */
+    static int clientTopSolid(Minecraft mc, int x, int z) {
+        var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+        for (int y = mc.level.getMaxBuildHeight() - 1; y >= mc.level.getMinBuildHeight(); y--)
+            if (!mc.level.getBlockState(pos.set(x, y, z)).isAir()) return y;
+        return Integer.MIN_VALUE;
+    }
+
     /** One-line state of the real-world bubble for the benchmark log. */
     static String bubbleDiag() {
         Minecraft mc = Minecraft.getInstance();
@@ -194,12 +202,23 @@ public final class PlanetClient {
             int cx = (int) Math.floor(bubble.x0) >> 4, cz = (int) Math.floor(bubble.z0) >> 4, have = 0;
             for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) if (mc.level.getChunkSource().hasChunk(cx + dx, cz + dz)) have++;
             sb.append(String.format(" anchorPlane=(%.0f,%.0f) clientChunks5x5=%d/25 ready=%b allSections=%b", bubble.x0, bubble.z0, have, chunksReady(mc), mc.levelRenderer.hasRenderedAllSections()));
-            sb.append(String.format(" realY@anchor=%d", mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, (int) bubble.x0, (int) bubble.z0)));
+            int top = clientTopSolid(mc, (int) Math.floor(bubble.x0), (int) Math.floor(bubble.z0));
+            sb.append(" clientTopSolid@anchor=" + (top == Integer.MIN_VALUE ? "NONE(all air)" : top + " " + mc.level.getBlockState(new net.minecraft.core.BlockPos((int) Math.floor(bubble.x0), top, (int) Math.floor(bubble.z0))).getBlock().getDescriptionId()));
+            sb.append(" dim=" + mc.level.dimensionType().minY() + ".." + (mc.level.dimensionType().minY() + mc.level.dimensionType().height()));
         }
         var server = mc.getSingleplayerServer();
         if (server != null) {
             var sp = server.getPlayerList().getPlayers().isEmpty() ? null : server.getPlayerList().getPlayers().get(0);
             if (sp != null) sb.append(String.format(" serverPlayer=(%.0f,%.0f,%.0f)", sp.getX(), sp.getY(), sp.getZ()));
+            if (bubble != null && sp != null) {
+                var lvl = sp.serverLevel();
+                var bp = new net.minecraft.core.BlockPos.MutableBlockPos();
+                int stop = Integer.MIN_VALUE;
+                for (int y = lvl.getMaxBuildHeight() - 1; y >= lvl.getMinBuildHeight(); y--)
+                    if (!lvl.getBlockState(bp.set((int) Math.floor(bubble.x0), y, (int) Math.floor(bubble.z0))).isAir()) { stop = y; break; }
+                sb.append(" serverTopSolid@anchor=" + (stop == Integer.MIN_VALUE ? "NONE" : String.valueOf(stop)));
+                sb.append(" generator=" + lvl.getChunkSource().getGenerator().getClass().getSimpleName() + " minY=" + lvl.getMinBuildHeight());
+            }
         }
         return sb.toString();
     }

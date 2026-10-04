@@ -146,7 +146,13 @@ final class PlanetAutoTest {
                 if (!vanillaPath && Math.abs(d.y()) > 0.8) continue;           // temperate/tropical latitudes
                 if (dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(d) > 0.8) continue;   // keep the landing site clear of cube edges
                 double h = search.heightAt(d, 1e9);                   // coarse only: fast, no per-point vanilla/rivers cost
-                if (Math.abs(h - wanted) < bestErr) { bestErr = Math.abs(h - wanted); bestDir = d; bestH = h; }
+                if (Math.abs(h - wanted) < bestErr) {
+                    if (!vanillaPath) {                                   // the landing column must lie in the 1:1 height range
+                        double full = search.heightAt(d, 1.0);
+                        if (full < 120 || full > 900) continue;
+                    }
+                    bestErr = Math.abs(h - wanted); bestDir = d; bestH = h;
+                }
             }
             target = bestDir;
             targetInfo = String.format("TARGET: dir=%s height=%.0f m (day side)", target, bestH);
@@ -311,17 +317,16 @@ final class PlanetAutoTest {
         int exact = 0, n = 0, unloaded = 0;
         for (int i = -6; i < 6; i++) for (int j = -6; j < 6; j++) {
             int x = (int) Math.floor(frame.x0 + i * 10), z = (int) Math.floor(frame.z0 + j * 10);
-            int real = mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z);
-            if (real <= mc.level.getMinBuildHeight() + 1) { unloaded++; continue; }                 // no chunk data on the client here
+            int real = PlanetClient.clientTopSolid(mc, x, z);
+            if (real == Integer.MIN_VALUE) { unloaded++; continue; }                               // all air: no chunk data
             Vec3 dir = dev.gohst136.planetary.planet.PlaneUnwrap.inverse(x + 0.5, z + 0.5, half);
-            double expected = Math.floor(dev.gohst136.planetary.planet.VerticalMap.toBlockY(PlanetClient.TERRAIN.heightAt(dir, 1.0))) + 1;
+            double expected = Math.floor(dev.gohst136.planetary.planet.VerticalMap.toBlockY(PlanetClient.TERRAIN.heightAt(dir, 1.0)));
             diffs.add(Math.abs(real - expected)); n++;
-            if (Math.abs(real - expected) <= 1) exact++;
+            if (Math.abs(real - expected) <= 3) exact++;                                           // trees/features add a few blocks
         }
-        if (diffs.isEmpty()) return "FIDELITY real chunks: NO chunk data on the client around the anchor (" + unloaded + " columns empty)";
         java.util.Collections.sort(diffs);
         double mean = diffs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 1 block: %d%% (trees count as terrain)",
+        return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 3 blocks: %d%% (trees/features count as terrain)",
                 n, unloaded, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
     }
 }
