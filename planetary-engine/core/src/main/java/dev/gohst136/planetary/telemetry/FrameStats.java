@@ -11,6 +11,7 @@ public final class FrameStats {
 
     public void record(double ms) { ring[next] = ms; next = (next + 1) % ring.length; count = Math.min(count + 1, ring.length); }
 
+    public double last() { return count == 0 ? 0 : ring[(next - 1 + ring.length) % ring.length]; }
     public double average() { double s = 0; for (int i = 0; i < count; i++) s += ring[i]; return count == 0 ? 0 : s / count; }
     public double median() { return percentile(0.5); }
     public double p95() { return percentile(0.95); }

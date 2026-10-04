@@ -38,6 +38,10 @@ final class PlanetAutoTest {
     private static File outDir;
     private static FileWriter log;
     private static String pendingName;
+    private static boolean finished;
+    private static boolean transit;          // phase 2: continuous descent without holds
+    private static int tFrames, tFallbackFrames, tHoleFrames, tMaxFallback, tMaxHoles, tMerges;
+    private static FrameStats tStats = new FrameStats(5000);
     private static Vec3 target;
     private static double targetGround;
 
@@ -67,7 +71,7 @@ final class PlanetAutoTest {
         if (PlanetClient.active && mc.player != null) aim(mc);
     }
 
-    static double scriptedSpeed() { return Math.max(5.0, alt / 2.0); }
+    static double scriptedSpeed() { return Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
 
     /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
@@ -75,10 +79,10 @@ final class PlanetAutoTest {
             double bestErr = 1e18, bestH = 0; Vec3 bestDir = new Vec3(1, 0, 0);
             int n = 100_000;
             for (int i = 0; i < n; i++) {
-                double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
+                double y = 1 - 0.005 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;   // cap within ~5.7 deg of the pole: world-up ~ local up, so the horizon is level
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
                 double h = PlanetClient.TERRAIN.heightAt(d);
-                if (Math.abs(y) < 0.9 && Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
+                if (Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
             }
             target = bestDir; targetGround = PlanetClient.PLANET.radius() + bestH;
             System.out.printf("[planetary-autotest] target height=%.0f m dir=%s%n", bestH, target);
@@ -96,7 +100,7 @@ final class PlanetAutoTest {
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
         Vec3 d = targetDir();
-        Vec3 tangent = d.cross(new Vec3(0, 1, 0)).normalize();
+        Vec3 tangent = d.cross(new Vec3(1, 0, 0)).normalize();
         Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
         mc.player.setXRot((float) Math.toDegrees(-Math.asin(look.y())));
         mc.player.setYRot((float) Math.toDegrees(Math.atan2(-look.x(), look.z())));
@@ -104,7 +108,10 @@ final class PlanetAutoTest {
 
     static Vec3 scriptedPosition() {
         double groundRadius = (targetDir() != null) ? targetGround : 0;
-        if (stop < STOPS.length && hold == 0) {
+        if (transit) {
+            t += 1.0 / 30.0;
+            alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 1.0));   // twice as fast, no holds
+        } else if (stop < STOPS.length && hold == 0) {
             t += 1.0 / 30.0;
             alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 2.0));
             if (alt <= STOPS[stop] * 1.0001) { alt = STOPS[stop]; hold = 1; }
@@ -113,7 +120,25 @@ final class PlanetAutoTest {
     }
 
     static void afterFrame(QuadtreeSelector.Result r, GlPlanetRenderer renderer, FrameStats fs, double selectMs) {
-        if (!enabled() || stop >= STOPS.length) return;
+        if (!enabled()) return;
+        if (transit) {
+            tFrames++;
+            tStats.record(fs.median() > 0 ? lastFrameMs(fs) : 0);
+            int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
+            if (fb > 0) tFallbackFrames++;
+            if (ho > 0) tHoleFrames++;
+            tMaxFallback = Math.max(tMaxFallback, fb); tMaxHoles = Math.max(tMaxHoles, ho);
+            tMerges += r.merges;
+            if (alt <= STOPS[STOPS.length - 1] && tFrames > 30) {
+                String line = String.format("TRANSIT (continuous, 2x speed, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f",
+                        tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
+                System.out.println("[planetary-autotest] " + line);
+                try { log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
+                transit = false; finished = true; pendingName = "final.png";
+            }
+            return;
+        }
+        if (stop >= STOPS.length) return;
         frames++;
         if (hold == 0) return;
         if (++hold < HOLD_FRAMES) return;
@@ -126,7 +151,10 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0;
+        if (stop >= STOPS.length) { transit = true; t = 0; alt = STOPS[0]; }
     }
+
+    private static double lastFrameMs(FrameStats fs) { return fs.last(); }
 
     /** Called from RenderGuiEvent.Post: the frame is complete (sky, planet, GUI), so grab it. */
     static void captureIfPending() {
@@ -134,9 +162,6 @@ final class PlanetAutoTest {
         Minecraft mc = Minecraft.getInstance();
         Screenshot.grab(outDir, pendingName, mc.getMainRenderTarget(), c -> {});
         pendingName = null;
-        if (stop >= STOPS.length) {
-            try { log.close(); } catch (IOException ignored) {}
-            mc.execute(mc::stop);
-        }
+        if (finished) mc.execute(mc::stop);
     }
 }

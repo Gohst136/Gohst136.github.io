@@ -55,6 +55,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
     private long residentBytes, frame;
     private int drawnLastFrame, requestedLastFrame;
+    /** Selected patches drawn through a coarser ancestor / not drawn at all in the last frame (pop-in proxies). */
+    private int fallbackLastFrame, holesLastFrame;
     private final java.util.concurrent.atomic.AtomicLong meshesBuilt = new java.util.concurrent.atomic.AtomicLong();
     private long uploadsTotal;
 
@@ -141,11 +143,15 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         // choose what to draw: own mesh if resident, else nearest resident ancestor (deduplicated)
         Map<PatchKey, Float> toDraw = new LinkedHashMap<>();
         Set<PatchKey> ancestors = new HashSet<>();
+        int fallback = 0, holes = 0;
         for (SelectedPatch sp : selected) {
             if (resident.containsKey(sp.key())) continue;
+            boolean found = false;
             for (PatchKey a = sp.key().parent(); a != null; a = a.parent())
-                if (resident.containsKey(a)) { ancestors.add(a); break; }
+                if (resident.containsKey(a)) { ancestors.add(a); found = true; break; }
+            if (found) fallback++; else holes++;
         }
+        fallbackLastFrame = fallback; holesLastFrame = holes;
         for (SelectedPatch sp : selected) {
             if (resident.containsKey(sp.key())) {
                 if (!hasAncestorIn(sp.key(), ancestors)) toDraw.put(sp.key(), sp.morphToParent());
@@ -256,9 +262,12 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         }
     }
 
+    int fallbackLastFrame() { return fallbackLastFrame; }
+    int holesLastFrame() { return holesLastFrame; }
+
     List<String> stats() {
         return List.of("resident=" + resident.size() + " vram=" + (residentBytes >> 20) + "MB/" + (VRAM_BUDGET_BYTES >> 20) + "MB",
-                "drawn=" + drawnLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
+                "drawn=" + drawnLastFrame + " fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
                 "built=" + meshesBuilt + " uploaded=" + uploadsTotal);
     }
 

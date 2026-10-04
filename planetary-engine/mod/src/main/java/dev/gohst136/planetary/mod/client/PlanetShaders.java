@@ -70,7 +70,7 @@ final class PlanetShaders {
                 col *= 0.92 + 0.16 * jitter;
                 col = mix(col, col * 0.55, 0.35 * l1 + 0.5 * l16);
                 float diff = max(dot(n, uSun), 0.0);
-                fragColor = vec4(col * (0.04 + 0.96 * diff), 1.0);
+                fragColor = vec4(col * (0.12 + 0.88 * diff), 1.0);
             }
             """;
 
