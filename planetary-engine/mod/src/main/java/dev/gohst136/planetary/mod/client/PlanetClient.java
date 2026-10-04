@@ -50,6 +50,7 @@ public final class PlanetClient {
     /** Unit vector towards the sun in the planet frame. */
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
+    static boolean planetOff;                  // diagnostics: skip the planet draw (real world only)
     static boolean active;
     private static net.minecraft.client.CloudStatus savedClouds = net.minecraft.client.CloudStatus.FANCY;
     /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
@@ -204,6 +205,7 @@ public final class PlanetClient {
             sb.append(String.format(" anchorPlane=(%.0f,%.0f) clientChunks5x5=%d/25 ready=%b allSections=%b", bubble.x0, bubble.z0, have, chunksReady(mc), mc.levelRenderer.hasRenderedAllSections()));
             int top = clientTopSolid(mc, (int) Math.floor(bubble.x0), (int) Math.floor(bubble.z0));
             sb.append(" clientTopSolid@anchor=" + (top == Integer.MIN_VALUE ? "NONE(all air)" : top + " " + mc.level.getBlockState(new net.minecraft.core.BlockPos((int) Math.floor(bubble.x0), top, (int) Math.floor(bubble.z0))).getBlock().getDescriptionId()));
+            sb.append(" sectionsRendered=" + mc.levelRenderer.countRenderedSections() + " stats=[" + mc.levelRenderer.getSectionStatistics() + "]");
             sb.append(" dim=" + mc.level.dimensionType().minY() + ".." + (mc.level.dimensionType().minY() + mc.level.dimensionType().height()));
         }
         var server = mc.getSingleplayerServer();
@@ -349,7 +351,7 @@ public final class PlanetClient {
         // planet mode owns the whole picture: black space (stars are added by the atmosphere pass), depth reset
         RenderSystem.clearColor(0f, 0f, 0f, 1f);
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
-        renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
+        if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
         if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
 

@@ -39,6 +39,7 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished, stopAfterCapture, landing;
+    private static int post, postFrames;     // post-transit shots in the real world: planet on / planet off
     private static long chunkWaitStart;
     // watchdog: if the benchmark stops making progress, dump every thread's stack to hang.txt and exit, so results always arrive
     private static volatile long lastFrameNanos, lastStageNanos;
@@ -230,8 +231,16 @@ final class PlanetAutoTest {
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n" + fidelityStats() + "\n"); log.close(); } catch (IOException ignored) {}
-                transit = false; stopAfterCapture = true; pendingName = "final.png";
+                transit = false; post = 1; postFrames = 0; pendingName = "final.png";
             }
+            return;
+        }
+        if (post > 0) {
+            if (pendingName != null) return;
+            postFrames++;
+            if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 2; postFrames = 0; }
+            else if (post == 2) { PlanetClient.planetOff = true; post = 3; postFrames = 0; }
+            else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; stopAfterCapture = true; }
             return;
         }
         if (orbit) {
