@@ -33,6 +33,9 @@ public final class CubeSphere {
         return direction(face, -1.0 + 2.0 * (x + fx) / n, -1.0 + 2.0 * (y + fy) / n);
     }
 
+    public static Vec3 uAxis(int face) { return U_AXIS[face]; }
+    public static Vec3 vAxis(int face) { return V_AXIS[face]; }
+
     /** Face whose normal axis has the largest |component| of {@code d}. */
     public static int faceOf(Vec3 d) {
         double ax = Math.abs(d.x()), ay = Math.abs(d.y()), az = Math.abs(d.z());

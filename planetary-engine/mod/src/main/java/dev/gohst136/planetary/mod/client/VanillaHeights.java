@@ -21,14 +21,17 @@ import java.util.function.DoubleBinaryOperator;
  */
 final class VanillaHeights implements DoubleBinaryOperator {
     private final ServerLevel level;
+    private final ChunkGenerator generator;
+    private final RandomState randomState;
     private final DensityFunction density;
     private final int seaLevel, minY, maxY;
     final AtomicLong calls = new AtomicLong(), nanos = new AtomicLong();
 
     VanillaHeights(ServerLevel level) {
         this.level = level;
-        ChunkGenerator generator = level.getChunkSource().getGenerator();
-        this.density = level.getChunkSource().randomState().router().initialDensityWithoutJaggedness();
+        this.generator = level.getChunkSource().getGenerator();
+        this.randomState = level.getChunkSource().randomState();
+        this.density = randomState.router().initialDensityWithoutJaggedness();
         this.seaLevel = generator.getSeaLevel();
         this.minY = level.getMinBuildHeight();
         this.maxY = level.getMaxBuildHeight();
@@ -56,6 +59,13 @@ final class VanillaHeights implements DoubleBinaryOperator {
     }
 
     private double d(int x, int y, int z) { return density.compute(new DensityFunction.SinglePointContext(x, y, z)); }
+
+    /** Ground truth: the generator's own column height (slow, for validation only). */
+    double exactHeight(double x, double z) {
+        int y = generator.getBaseHeight((int) Math.floor(x), (int) Math.floor(z),
+                net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR_WG, level, randomState);
+        return y - seaLevel;
+    }
 
     String stats() {
         long c = calls.get();

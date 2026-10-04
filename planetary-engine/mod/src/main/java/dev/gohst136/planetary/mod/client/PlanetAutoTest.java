@@ -38,7 +38,8 @@ final class PlanetAutoTest {
     private static File outDir;
     private static FileWriter log;
     private static String pendingName;
-    private static boolean finished;
+    private static boolean finished, stopAfterCapture, landing;
+    private static int landingTick;
     private static boolean clearPending;
     private static String targetInfo = "";
     private static long holdStartNanos;
@@ -73,6 +74,7 @@ final class PlanetAutoTest {
             PlanetClient.setActive(true);
         }
         if (PlanetClient.active && mc.player != null) aim(mc);
+        if (landing && pendingName == null) landingStep(mc);
     }
 
     static double scriptedSpeed() { return Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
@@ -85,6 +87,7 @@ final class PlanetAutoTest {
             for (int i = 0; i < n; i++) {
                 double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
+                if (d.x() * PlanetClient.SUN[0] + d.y() * PlanetClient.SUN[1] + d.z() * PlanetClient.SUN[2] < 0.5) continue;   // day side only
                 double h = PlanetClient.TERRAIN.heightAt(d, 1e9);   // macro only: 100k vanilla samples would freeze the render thread
                 if (Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
             }
@@ -147,7 +150,7 @@ final class PlanetAutoTest {
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
-                transit = false; finished = true; pendingName = "final.png";
+                transit = false; landing = true; landingTick = 0; pendingName = "final.png";
             }
             return;
         }
@@ -177,6 +180,50 @@ final class PlanetAutoTest {
         Minecraft mc = Minecraft.getInstance();
         Screenshot.grab(outDir, pendingName, mc.getMainRenderTarget(), c -> {});
         pendingName = null;
-        if (finished) mc.execute(mc::stop);
+        if (stopAfterCapture) mc.execute(mc::stop);
+    }
+
+    /**
+     * Landing check: after the planet descent, put the real player at the corresponding vanilla position (via the
+     * plane unwrap), let the real chunks load, screenshot them, and compare the planet's vanilla-detail layer with
+     * the generator's true heights around the anchor.
+     */
+    private static void landingStep(Minecraft mc) {
+        landingTick++;
+        if (landingTick == 5) {
+            PlanetClient.setActive(false);
+            var d = targetDir();
+            int face = dev.gohst136.planetary.planet.CubeSphere.faceOf(d);
+            double half = PlanetClient.PLANET.radius() * Math.PI / 4.0;
+            var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, half, 0.0);   // band 0: primary face only
+            double x = m.x1(), z = m.z1();
+            double y = PlanetClient.vanilla.applyAsDouble(x, z) + 63.0 + 4.0;
+            Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+            double w = Math.tan(Math.min(Math.toRadians(60), 0.6 * Math.PI / 2));
+            double dx = tangent.dot(dev.gohst136.planetary.planet.CubeSphere.uAxis(face));
+            double dz = -tangent.dot(dev.gohst136.planetary.planet.CubeSphere.vAxis(face));
+            float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz)), pitch = (float) Math.toDegrees(Math.atan(1.0 / w));
+            // fidelity of the detail layer against the generator's true column heights (8x8 grid, 8 m apart)
+            double err = 0, worst = 0; int n = 0;
+            for (int i = -4; i < 4; i++) for (int j = -4; j < 4; j++) {
+                double e = Math.abs(PlanetClient.vanilla.applyAsDouble(x + i * 8, z + j * 8) - PlanetClient.vanilla.exactHeight(x + i * 8, z + j * 8));
+                err += e; worst = Math.max(worst, e); n++;
+            }
+            String line = String.format("LANDING: face=%d plane=(%.0f,%.0f) vanillaY=%.1f yaw=%.0f pitch=%.0f | detail-layer vs generator height: mean |err|=%.2f m worst=%.1f m (n=%d)", face, x, z, y, yaw, pitch, err / n, worst, n);
+            System.out.println("[planetary-autotest] " + line);
+            try { log = new FileWriter(new File(outDir, "stats.txt"), true); log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
+            var server = mc.getSingleplayerServer();
+            final double fx = x, fy = y, fz = z; final float fyaw = yaw, fpitch = pitch;
+            server.execute(() -> {
+                var sp = server.getPlayerList().getPlayers().get(0);
+                sp.teleportTo(sp.serverLevel(), fx, fy, fz, fyaw, fpitch);
+                sp.getAbilities().flying = true;
+                sp.onUpdateAbilities();
+            });
+        } else if (landingTick == 5 + 400) {          // ~20 s at 20 tps: chunks around the anchor are in
+            stopAfterCapture = true;
+            pendingName = "landing_vanilla.png";
+            landing = false;
+        }
     }
 }

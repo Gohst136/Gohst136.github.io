@@ -47,6 +47,8 @@ public final class PlanetClient {
     static VanillaHeights vanilla;
     static String terrainMode = "procedural";
 
+    /** Unit vector towards the sun in the planet frame. */
+    static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean active;
     static Vec3 pos = Vec3.ZERO;
     private static double speed;
@@ -194,9 +196,7 @@ public final class PlanetClient {
         }
 
         Matrix4f proj = new Matrix4f().perspective((float) fovY, (float) aspect, (float) NEAR, (float) FAR);
-        float[] sun = {0.6f, 0.5f, 0.62f};
-        float sl = (float) Math.sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
-        sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
+        float[] sun = SUN;
         PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
         // planet mode owns the whole picture: black space (stars are added by the atmosphere pass), depth reset
         RenderSystem.clearColor(0f, 0f, 0f, 1f);
@@ -206,7 +206,8 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void overlay(RenderGuiEvent.Post e) {
-        if (!active || lastResult == null) return;
+        if (!active) { PlanetAutoTest.captureIfPending(); return; }          // vanilla-mode screenshots (landing check)
+        if (lastResult == null) return;
         Minecraft mc = Minecraft.getInstance();
         double alt = pos.length() - PLANET.radius();
         List<String> lines = new ArrayList<>();
