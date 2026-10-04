@@ -34,4 +34,30 @@ public final class PlaneUnwrap {
         double x2 = ((g % 3) - 1) * pitch + uv2[0] * halfSpan, z2 = ((g / 3) - 0.5) * pitch - uv2[1] * halfSpan;
         return new Mapped(x1, z1, x2, z2, w2);
     }
+
+    /**
+     * Inverse: plane coordinates -> sphere direction, for world generators (vanilla chunks live in the plane). Each face's
+     * square is extended (equal-angle mapping is exact beyond the edge: along an axis angle = u * 90 deg / 2) up to |u|,|v| of
+     * 1.15, so terrain keeps going across cube edges where the plane has a gap. Beyond the half-way line to the neighbouring
+     * face square the nearest face is used; callers should re-anchor (teleport to the same planet point on the proper face)
+     * well before that, i.e. while max(|u|,|v|) < 1.0.
+     */
+    public static Vec3 inverse(double x, double z, double halfSpan) {
+        double pitch = 2.2 * halfSpan;
+        int best = 0; double bestM = Double.MAX_VALUE;
+        for (int f = 0; f < 6; f++) {
+            double u = (x - ((f % 3) - 1) * pitch) / halfSpan, v = -(z - ((f / 3) - 0.5) * pitch) / halfSpan;
+            double m = Math.max(Math.abs(u), Math.abs(v));
+            if (m < bestM) { bestM = m; best = f; }
+        }
+        double u = (x - ((best % 3) - 1) * pitch) / halfSpan, v = -(z - ((best / 3) - 0.5) * pitch) / halfSpan;
+        u = Math.max(-1.6, Math.min(1.6, u)); v = Math.max(-1.6, Math.min(1.6, v));
+        return CubeSphere.direction(best, u, v);
+    }
+
+    /** Largest of |u|, |v| of a direction on its own face: how close it is to a cube edge (1.0 = on the edge). */
+    public static double edgeDistance(Vec3 d) {
+        double[] uv = CubeSphere.faceUV(CubeSphere.faceOf(d), d);
+        return Math.max(Math.abs(uv[0]), Math.abs(uv[1]));
+    }
 }

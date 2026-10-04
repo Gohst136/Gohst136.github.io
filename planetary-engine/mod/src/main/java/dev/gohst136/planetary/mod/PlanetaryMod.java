@@ -16,6 +16,7 @@ public final class PlanetaryMod {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public PlanetaryMod(IEventBus modBus) {
-        LOGGER.info("Planetary engine scaffold loaded (core selector/mesh/coords are in :core)");
+        dev.gohst136.planetary.mod.world.PlanetWorldRegistry.register(modBus);
+        LOGGER.info("Planetary engine loaded (planet world generator registered as planetary:planet)");
     }
 }

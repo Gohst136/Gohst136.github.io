@@ -49,6 +49,7 @@ public final class PlanetClient {
 
     /** Unit vector towards the sun in the planet frame. */
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
+    static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
     static boolean active;
     private static net.minecraft.client.CloudStatus savedClouds = net.minecraft.client.CloudStatus.FANCY;
     /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
@@ -118,13 +119,17 @@ public final class PlanetClient {
         if (planetPrepared) return;
         planetPrepared = true;
         var server = mc.getSingleplayerServer();
-        long seed = server != null ? server.overworld().getSeed() : 20240601L;
         if (server != null && Boolean.getBoolean("planetary.vanillaBubble")) {
-            PLANET = PlanetDefinition.earthlikeVanilla(seed);
+            PLANET = PlanetDefinition.earthlikeVanilla(server.overworld().getSeed());
             vanilla = new VanillaHeights(server.overworld());
-        } else {
-            PLANET = PlanetDefinition.earth(seed);
+            return;
         }
+        long seed = dev.gohst136.planetary.mod.world.PlanetWorld.DEFAULT_SEED;
+        if (server != null && server.overworld().getChunkSource().getGenerator() instanceof dev.gohst136.planetary.mod.world.PlanetChunkGenerator pg) {
+            realWorld = true;
+            seed = pg.seed;
+        }
+        PLANET = dev.gohst136.planetary.mod.world.PlanetWorld.planet(seed);
     }
 
     private static void chooseTerrain(Minecraft mc) {
@@ -135,8 +140,8 @@ public final class PlanetClient {
             TERRAIN = new HybridTerrain(PLANET, macro, vanilla, 1500, 4000, 60, 0.06);
             terrainMode = "hybrid (procedural macro" + (anchor != null ? " flattened 1-8 km around the anchor" : "") + " + vanilla worldgen detail, seed " + PLANET.seed() + ")";
         } else {
-            TERRAIN = new dev.gohst136.planetary.terrain.RealisticTerrain(PLANET);
-            terrainMode = "realistic planet (continents, oceans, mountain belts, rivers, climate), seed " + PLANET.seed();
+            TERRAIN = dev.gohst136.planetary.mod.world.PlanetWorld.terrain(PLANET.seed());
+            terrainMode = "realistic planet (continents, oceans, mountain belts, rivers, climate), seed " + PLANET.seed() + (realWorld ? ", real chunks from the planet generator" : "");
         }
     }
 
@@ -147,13 +152,14 @@ public final class PlanetClient {
      * the real chunks appear on top of it.
      */
     private static void handoff(Minecraft mc, Vec3 radial, Vec3 fwd, double alt) {
-        if (anchor == null || vanilla == null || mc.getSingleplayerServer() == null || mc.player == null) return;
+        if (anchor == null || (vanilla == null && !realWorld) || mc.getSingleplayerServer() == null || mc.player == null) return;
         frameCount++;
         double dist = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
         if (!preloaded && alt < 4000 && dist < 30000) {
             preloaded = true; preloadFrame = frameCount;
             bubble = makeBubble();
-            teleportReal(bubble.x0, bubble.y0 + 60, bubble.z0, 0f, 0f);
+            double parkY = realWorld ? Math.max(0.0, dev.gohst136.planetary.planet.VerticalMap.toBlockY(TERRAIN.heightAt(anchor))) + 60 : bubble.y0 + 60;
+            teleportReal(bubble.x0, parkY, bubble.z0, 0f, 0f);
             return;
         }
         if (!preloaded) return;
@@ -183,6 +189,7 @@ public final class PlanetClient {
 
     /** Builds the bubble frame at the anchor: planet ground there, real vanilla ground height there. */
     static BubbleFrame makeBubble() {
+        if (realWorld) return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius(), 0.0);   // block Y == metres above sea level (below Y 800)
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
         double y0 = vanilla.exactHeight(m.x1(), m.z1()) + 63.0;
         return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius() + TERRAIN.heightAt(anchor), y0);

@@ -55,9 +55,19 @@ public final class RealisticTerrain implements TerrainSampler {
         out[0] = out[1] = o[0];
     }
 
+    /** Everything the world generators need to know about one surface point. */
+    public record Surface(double height, double temperature, double moisture, double river, double continental,
+                          double r, double g, double b, boolean water) {}
+
     @Override
     public void sampleSurface(Vec3 d, double cell, double[] out) {
+        Surface s = surface(d, cell);
+        out[0] = s.height(); out[1] = s.r(); out[2] = s.g(); out[3] = s.b(); out[4] = s.water() ? 1.0 : 0.0;
+    }
+
+    public Surface surface(Vec3 d, double cell) {
         final double x = d.x(), y = d.y(), z = d.z();
+        double[] out = new double[5];
 
         // ---- continents ------------------------------------------------------------------------------------
         double wx = n.fbm(x * 1.3 + 11, y * 1.3 + 5, z * 1.3 + 3, 3);
@@ -104,7 +114,7 @@ public final class RealisticTerrain implements TerrainSampler {
                 double vz = n.noise(x * fr * 0.7 + oz, y * fr * 0.7 - ox, z * fr * 0.7 + 3) * 0.10;
                 double nv = Math.abs(n.fbm((x + vx) * fr + ox * 3, (y + vy) * fr - oz, (z + vz) * fr + 5.5, 3));
                 double hw = (wEff / radius) * fr * 1.4;
-                double m = (1.0 - smooth(0.0, hw, nv)) * fadeHigh;
+                double m = (1.0 - smooth(0.0, hw * 2.4, nv)) * fadeHigh;      // soft shoulders: vertex colours interpolate, so hard edges alias into blocks
                 if (m > riverMask) {
                     riverMask = m;
                     carve = Math.min(0.45 * h0 + 2.0, 4.0 + 0.06 * wEff);
@@ -126,6 +136,7 @@ public final class RealisticTerrain implements TerrainSampler {
 
         out[0] = h;
         colour(h, t, temp, moist, riverMask, cell, x, y, z, out);
+        return new Surface(h, temp, moist, riverMask, t, out[1], out[2], out[3], out[4] > 0.5);
     }
 
     private void colour(double h, double t, double temp, double moist, double river, double cell,
@@ -171,8 +182,8 @@ public final class RealisticTerrain implements TerrainSampler {
             water = false;
             if (river > 0.0) {
                 double[] rw = {0.08, 0.30, 0.52};
-                SurfacePalette.mix(c, c, rw, smooth(0.15, 0.55, river));
-                water = river > 0.55;
+                SurfacePalette.mix(c, c, rw, smooth(0.08, 0.85, river));
+                water = river > 0.7;
             }
         }
         out[1] = c[0]; out[2] = c[1]; out[3] = c[2];

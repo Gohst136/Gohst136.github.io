@@ -103,7 +103,12 @@ final class PlanetAutoTest {
                 mc.createWorldOpenFlows().createFreshLevel("planetary_autotest",
                         new LevelSettings("planetary_autotest", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
                                 new GameRules(), WorldDataConfiguration.DEFAULT),
-                        WorldOptions.defaultWithRandomSeed(), WorldPresets::createNormalWorldDimensions, mc.screen);
+                        WorldOptions.defaultWithRandomSeed(),
+                        Boolean.getBoolean("planetary.vanillaBubble") ? WorldPresets::createNormalWorldDimensions
+                                : (ra -> ra.registryOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getHolderOrThrow(
+                                        net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.WORLD_PRESET,
+                                                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("planetary", "planet"))).value().createWorldDimensions()),
+                        mc.screen);
             }
             return;
         }
@@ -113,7 +118,7 @@ final class PlanetAutoTest {
             try { log = new FileWriter(new File(outDir, "stats.txt"));
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.preparePlanet(mc);
-            if (PlanetClient.vanilla != null) PlanetClient.anchor = targetDir();   // vanilla path: terrain is flattened around the landing site
+            PlanetClient.anchor = targetDir();                   // landing site (vanilla path: terrain is flattened around it)
             startWatchdog();
             PlanetClient.setActive(true);
         }
@@ -138,6 +143,7 @@ final class PlanetAutoTest {
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
                 if (d.x() * PlanetClient.SUN[0] + d.y() * PlanetClient.SUN[1] + d.z() * PlanetClient.SUN[2] < 0.5) continue;   // day side only
                 if (!vanillaPath && Math.abs(d.y()) > 0.8) continue;           // temperate/tropical latitudes
+                if (dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(d) > 0.8) continue;   // keep the landing site clear of cube edges
                 double h = search.heightAt(d, 1e9);                   // coarse only: fast, no per-point vanilla/rivers cost
                 if (Math.abs(h - wanted) < bestErr) { bestErr = Math.abs(h - wanted); bestDir = d; bestH = h; }
             }
@@ -253,7 +259,7 @@ final class PlanetAutoTest {
         var frame = PlanetClient.bubble;
         if (frame == null) return;
         Vec3 d = targetDir();
-        Vec3 planetPos = d.mul(frame.groundRadius + alt);
+        Vec3 planetPos = d.mul(targetGround + alt);
         Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
         Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
         double[] v = frame.vanillaPos(planetPos);
@@ -263,7 +269,7 @@ final class PlanetAutoTest {
 
     /** Fidelity of the vanilla-detail layer against the generator's true column heights: local grid and scattered points. */
     private static String fidelityStats() {
-        if (PlanetClient.vanilla == null) return "FIDELITY n/a (no vanilla layer in the realistic-planet path)";
+        if (PlanetClient.vanilla == null) return realWorldFidelity();
         var d = targetDir();
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, PlanetClient.PLANET.radius() * Math.PI / 4.0, 0.0);
         double bx = m.x1(), bz = m.z1();
@@ -282,5 +288,27 @@ final class PlanetAutoTest {
         double gmean = gs / gn;
         return String.format("FIDELITY local(8x8 @8m): mean|err|=%.2f signed=%.2f worst=%.1f | global(%d pts): mean=%.2f mean|err|=%.2f std=%.2f",
                 err / n, signed / n, worst, gn, gmean, ga / gn, Math.sqrt(gss / gn - gmean * gmean));
+    }
+
+    /** Real chunks vs. the planet function that built them and the mesh: client heightmap around the anchor. */
+    private static String realWorldFidelity() {
+        var mc = Minecraft.getInstance();
+        var frame = PlanetClient.bubble;
+        if (!PlanetClient.realWorld || mc.level == null || frame == null || !PlanetClient.bubbleLive) return "FIDELITY n/a (real-world bubble not live)";
+        double half = dev.gohst136.planetary.mod.world.PlanetWorld.halfSpan(PlanetClient.PLANET.seed());
+        java.util.List<Double> diffs = new java.util.ArrayList<>();
+        int exact = 0, n = 0;
+        for (int i = -6; i < 6; i++) for (int j = -6; j < 6; j++) {
+            int x = (int) Math.floor(frame.x0 + i * 10), z = (int) Math.floor(frame.z0 + j * 10);
+            int real = mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z);
+            Vec3 dir = dev.gohst136.planetary.planet.PlaneUnwrap.inverse(x + 0.5, z + 0.5, half);
+            double expected = Math.floor(dev.gohst136.planetary.planet.VerticalMap.toBlockY(PlanetClient.TERRAIN.heightAt(dir, 1.0))) + 1;
+            diffs.add(Math.abs(real - expected)); n++;
+            if (Math.abs(real - expected) <= 1) exact++;
+        }
+        java.util.Collections.sort(diffs);
+        double mean = diffs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+        return String.format("FIDELITY real chunks vs planet function (%d points @10 m): median |dY|=%.1f mean=%.2f max=%.0f within 1 block: %d%% (trees count as terrain)",
+                n, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
     }
 }

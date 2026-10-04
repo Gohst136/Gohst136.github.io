@@ -1,0 +1,15 @@
+{
+  "dimensions": {
+    "minecraft:overworld": {
+      "type": "planetary:planet",
+      "generator": {
+        "type": "planetary:planet",
+        "seed": 20240601,
+        "biome_source": {
+          "type": "planetary:planet",
+          "seed": 20240601
+        }
+      }
+    }
+  }
+}
