@@ -51,7 +51,8 @@ public final class PlanetClient {
     static Vec3 pos = Vec3.ZERO;
     private static double speed;
     private static long lastNanos;
-    private static QuadtreeSelector selector;
+    private static QuadtreeSelector selector, predictNear, predictFar;     // each keeps its own hysteresis state
+    private static Vec3 lastPos, velocity = Vec3.ZERO;
     private static GlPlanetRenderer renderer;
     private static QuadtreeSelector.Result lastResult;
     private static double selectMs;
@@ -87,7 +88,10 @@ public final class PlanetClient {
                 if (selector == null) {
                     chooseTerrain(mc);
                     selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
+                    predictNear = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
+                    predictFar = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
                     renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN), PLANET);
+                    renderer.pinCoarse();
                 }
             }
         }
@@ -171,6 +175,23 @@ public final class PlanetClient {
         long t0 = System.nanoTime();
         lastResult = selector.select(view);
         selectMs = (System.nanoTime() - t0) / 1e6;
+
+        // predictive streaming: where will the camera be in 0.5 s / 1.5 s? Load what it will need, ordered by time-to-visibility
+        if (lastPos != null && dt > 1e-4) velocity = velocity.mul(0.7).add(pos.sub(lastPos).mul(0.3 / dt));
+        lastPos = pos;
+        if (velocity.length() > 1.0) {
+            for (int i = 0; i < 2; i++) {
+                double horizon = i == 0 ? 0.5 : 1.5;
+                Vec3 pp = pos.add(velocity.mul(horizon));
+                double predMinR = PLANET.radius() + 2.0;
+                if (pp.length() < predMinR) pp = pp.normalize().mul(predMinR);
+                var pv = new CameraView(pp, fwd, camUp, fovY, h, w, speed);
+                var res = (i == 0 ? predictNear : predictFar).select(pv);
+                List<dev.gohst136.planetary.lod.PatchKey> keys = new ArrayList<>(res.patches.size());
+                for (var sp : res.patches) keys.add(sp.key());
+                renderer.prefetch(keys, i + 1);
+            }
+        }
 
         Matrix4f proj = new Matrix4f().perspective((float) fovY, (float) aspect, (float) NEAR, (float) FAR);
         float[] sun = {0.6f, 0.5f, 0.62f};

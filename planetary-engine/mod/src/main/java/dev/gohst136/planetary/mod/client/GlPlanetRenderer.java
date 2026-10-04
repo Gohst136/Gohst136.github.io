@@ -32,10 +32,25 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private static final int GRID = 32;
-    private static final int WORKERS = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors() / 2));
+    private static final int WORKERS = Math.max(2, Math.min(5, Runtime.getRuntime().availableProcessors() / 2 - 1));   // leave cores for render + server threads
     private static final long VRAM_BUDGET_BYTES = 192L << 20;
     private static final int MAX_UPLOADS_PER_FRAME = 6;
     private static final int MAX_REQUESTS_PER_FRAME = 64;
+    private static final int PIN_LEVEL = 2;                       // levels <= 2 stay resident (126 meshes, ~8 MB)
+    private static final long STALE_FRAMES = 240;                 // queued jobs nobody wants any more are skipped
+    private static final int MAX_QUEUED = 600;
+
+    /** Mesh job ordered by time-to-visibility class (0 = visible now, 1 = in 0.5 s, 2 = in 1.5 s), then coarse first. */
+    private static final class Job implements Runnable, Comparable<Job> {
+        final int prio, level; final long seq; final Runnable body;
+        Job(int prio, int level, long seq, Runnable body) { this.prio = prio; this.level = level; this.seq = seq; this.body = body; }
+        @Override public void run() { body.run(); }
+        @Override public int compareTo(Job o) {
+            if (prio != o.prio) return Integer.compare(prio, o.prio);
+            if (level != o.level) return Integer.compare(level, o.level);
+            return Long.compare(seq, o.seq);
+        }
+    }
 
     private static final class Gpu {
         int vao, vbo, ebo, indexCount;
@@ -59,7 +74,13 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     private int program = -1;
     private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
-    private long residentBytes, frame;
+    private long residentBytes;
+    private volatile long frame;
+    private final java.util.concurrent.atomic.AtomicLong jobSeq = new java.util.concurrent.atomic.AtomicLong();
+    private final Map<PatchKey, Long> wanted = new ConcurrentHashMap<>();       // key -> last frame someone wanted it
+    private final Map<PatchKey, Long> requestedAt = new ConcurrentHashMap<>();   // key -> nanoTime of request
+    private final dev.gohst136.planetary.telemetry.FrameStats latencyMs = new dev.gohst136.planetary.telemetry.FrameStats(4000);
+    private int prefetchLastFrame;
     private int drawnLastFrame, requestedLastFrame;
     /** Selected patches drawn through a coarser ancestor / not drawn at all in the last frame (pop-in proxies). */
     private int fallbackLastFrame, holesLastFrame;
@@ -69,9 +90,14 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet) {
         this.builder = builder;
         this.planet = planet;
-        this.workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
-                r -> { Thread t = new Thread(r, "planetary-mesh-" + workerId.incrementAndGet()); t.setDaemon(true); return t; },
-                (r, ex) -> { /* dropped: key stays absent from inFlight so it is re-requested next frame */ });
+        this.workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS,
+                new PriorityBlockingQueue<Runnable>(256, (a, b) -> ((Job) a).compareTo((Job) b)),
+                r -> {
+                    Thread t = new Thread(r, "planetary-mesh-" + workerId.incrementAndGet());
+                    t.setDaemon(true);
+                    t.setPriority(Thread.MIN_PRIORITY);          // never compete with the render thread if the OS honours it
+                    return t;
+                });
     }
 
     // ---- RenderBackend ----------------------------------------------------------------------
@@ -143,6 +169,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     void drawFrame(List<SelectedPatch> selected, double[] cam, Matrix4f view, Matrix4f proj, float[] sun) {
         frame++;
+        prefetchLastFrame = 0;
         if (program < 0) initProgram();
         drainUploads();
         requestMissing(selected);
@@ -280,6 +307,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             Built b = finished.poll();
             if (b == null) return;
             inFlight.remove(b.key());
+            Long t0 = requestedAt.remove(b.key());
+            if (t0 != null) latencyMs.record((System.nanoTime() - t0) / 1e6);
             upload(b.key(), b.mesh());
         }
     }
@@ -288,24 +317,54 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         List<PatchKey> missing = new ArrayList<>();
         for (SelectedPatch sp : selected) {
             PatchKey k = sp.key();
+            wanted.put(k, frame);
             if (!resident.containsKey(k) && !inFlight.contains(k)) missing.add(k);
             PatchKey par = k.parent();                       // make sure a fallback exists
-            if (par != null && !resident.containsKey(par) && !inFlight.contains(par)) missing.add(par);
+            if (par != null) {
+                wanted.put(par, frame);
+                if (!resident.containsKey(par) && !inFlight.contains(par)) missing.add(par);
+            }
         }
-        missing.sort(Comparator.comparingInt(PatchKey::level));   // coarse first: fills holes fastest
+        requestedLastFrame = submit(missing, 0);
+    }
+
+    /** Predictive streaming: keys the camera is expected to need soon. prio 1 = ~0.5 s ahead, 2 = ~1.5 s ahead. */
+    void prefetch(Collection<PatchKey> keys, int prio) {
+        List<PatchKey> missing = new ArrayList<>();
+        for (PatchKey k : keys) {
+            wanted.put(k, frame);
+            if (!resident.containsKey(k) && !inFlight.contains(k)) missing.add(k);
+        }
+        prefetchLastFrame += submit(missing, prio);
+    }
+
+    /** Requests the permanently resident coarse levels (so a descent from orbit always has ancestors). */
+    void pinCoarse() {
+        List<PatchKey> keys = new ArrayList<>();
+        for (int face = 0; face < 6; face++)
+            for (int lvl = 0; lvl <= PIN_LEVEL; lvl++)
+                for (int x = 0; x < (1 << lvl); x++) for (int y = 0; y < (1 << lvl); y++) keys.add(new PatchKey(face, lvl, x, y));
+        for (PatchKey k : keys) wanted.put(k, Long.MAX_VALUE / 2);
+        submit(keys, -1);
+    }
+
+    private int submit(List<PatchKey> keys, int prio) {
+        keys.sort(Comparator.comparingInt(PatchKey::level));
         int n = 0;
-        for (PatchKey k : missing) {
-            if (n >= MAX_REQUESTS_PER_FRAME) break;
+        for (PatchKey k : keys) {
+            if (prio >= 0 && (n >= MAX_REQUESTS_PER_FRAME || workers.getQueue().size() > MAX_QUEUED)) break;
             if (!inFlight.add(k)) continue;
-            try {
-                workers.execute(() -> {
-                    try { finished.add(new Built(k, builder.build(k, GRID))); meshesBuilt.incrementAndGet(); }
-                    catch (Throwable t) { inFlight.remove(k); }
-                });
-                n++;
-            } catch (RejectedExecutionException e) { inFlight.remove(k); break; }
+            requestedAt.put(k, System.nanoTime());
+            workers.execute(new Job(prio, k.level(), jobSeq.incrementAndGet(), () -> {
+                try {
+                    if (frame - wanted.getOrDefault(k, 0L) > STALE_FRAMES) { inFlight.remove(k); requestedAt.remove(k); return; }
+                    finished.add(new Built(k, builder.build(k, GRID)));
+                    meshesBuilt.incrementAndGet();
+                } catch (Throwable t) { inFlight.remove(k); requestedAt.remove(k); }
+            }));
+            n++;
         }
-        requestedLastFrame = n;
+        return n;
     }
 
     private void evictIfOverBudget() {
@@ -315,6 +374,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         for (var e : all) {
             if (residentBytes <= VRAM_BUDGET_BYTES * 0.9) break;
             if (e.getValue().lastUsedFrame >= frame - 1) continue;      // never evict what is on screen
+            if (e.getKey().level() <= PIN_LEVEL) continue;               // pinned coarse levels
             resident.remove(e.getKey());
             free(e.getValue());
         }
@@ -325,16 +385,22 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     /** Drops every resident mesh (used by the benchmark to start a transit with a cold cache). */
     void clearCache() {
-        for (Gpu g : resident.values()) free(g);
-        resident.clear();
+        resident.entrySet().removeIf(e -> {
+            if (e.getKey().level() <= PIN_LEVEL) return false;          // pinned coarse levels survive
+            free(e.getValue());
+            return true;
+        });
     }
 
     int fallbackLastFrame() { return fallbackLastFrame; }
     int holesLastFrame() { return holesLastFrame; }
 
+    String latencySummary() { return String.format("stream latency ms p50=%.0f p95=%.0f p99=%.0f max=%.0f", latencyMs.median(), latencyMs.p95(), latencyMs.p99(), latencyMs.worst()); }
+
     List<String> stats() {
         return List.of("resident=" + resident.size() + " vram=" + (residentBytes >> 20) + "MB/" + (VRAM_BUDGET_BYTES >> 20) + "MB",
                 "drawn=" + drawnLastFrame + " fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
+                "prefetch/frame=" + prefetchLastFrame + " queued=" + workers.getQueue().size() + " latency p50/p95/p99 ms=" + String.format("%.0f/%.0f/%.0f", latencyMs.median(), latencyMs.p95(), latencyMs.p99()),
                 "built=" + meshesBuilt + " uploaded=" + uploadsTotal);
     }
 

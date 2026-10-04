@@ -39,6 +39,7 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished;
+    private static boolean clearPending;
     private static String targetInfo = "";
     private static long holdStartNanos;
     private static long lastTransitNanos;
@@ -132,6 +133,7 @@ final class PlanetAutoTest {
     static void afterFrame(QuadtreeSelector.Result r, GlPlanetRenderer renderer, FrameStats fs, double selectMs) {
         if (!enabled()) return;
         if (transit) {
+            if (clearPending) { renderer.clearCache(); clearPending = false; }   // after the last screenshot was taken: cold cache (pinned coarse levels stay)
             tFrames++;
             tStats.record(fs.median() > 0 ? lastFrameMs(fs) : 0);
             int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
@@ -141,7 +143,7 @@ final class PlanetAutoTest {
             tMerges += r.merges;
             if (alt <= STOPS[STOPS.length - 1] && tFrames > 30) {
                 try { log.write("TERRAIN: " + PlanetClient.terrainStats() + "\n" + targetInfo + "\n"); } catch (IOException ignored) {}
-                String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f",
+                String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | " + renderer.latencySummary(),
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
@@ -164,7 +166,7 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0;
-        if (stop >= STOPS.length) { transit = true; t = 0; alt = STOPS[0]; renderer.clearCache(); }   // cold cache: transit must really stream
+        if (stop >= STOPS.length) { transit = true; clearPending = true; t = 0; alt = STOPS[0]; }
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }
