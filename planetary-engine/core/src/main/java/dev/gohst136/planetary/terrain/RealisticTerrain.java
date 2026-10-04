@@ -28,7 +28,7 @@ public final class RealisticTerrain implements TerrainSampler {
 
     /** Chosen so about 30% of the surface is land (checked by test). */
     private static final double LAND_BIAS = 0.06;
-    private static final double DETAIL_AMP = 200.0, DETAIL_PERSIST = 0.7, DETAIL_FREQ = 40.0;
+    private static final double DETAIL_AMP = 200.0, DETAIL_PERSIST = 0.78, DETAIL_FREQ = 40.0;
     private static final int DETAIL_MAX_OCTAVES = 17;
     private static final double[] RIVER_FREQ = {5, 14, 40, 120};
     private static final double[] RIVER_WIDTH_M = {450, 160, 60, 22};
@@ -78,7 +78,7 @@ public final class RealisticTerrain implements TerrainSampler {
         double mountain = orog * landW * Math.pow(ridge, 1.7) * 9500.0;
 
         // ---- detail relief (octaves fade out below 2 cells) -----------------------------------------------------
-        double rough = (0.35 + 0.65 * orog) * (0.25 + 0.75 * landW);
+        double rough = (0.6 + 0.9 * orog) * (0.3 + 0.7 * landW);
         double det = 0.0, amp = DETAIL_AMP, f = DETAIL_FREQ;
         for (int k = 0; k < DETAIL_MAX_OCTAVES; k++) {
             double wavelength = 2.0 * Math.PI * radius / f;
@@ -95,7 +95,7 @@ public final class RealisticTerrain implements TerrainSampler {
             double fadeHigh = 1.0 - smooth(1800.0, 3200.0, h0);
             for (int s = 0; s < RIVER_FREQ.length && fadeHigh > 0.0; s++) {
                 double fr = RIVER_FREQ[s], lambda = 2.0 * Math.PI * radius / fr;
-                double wEff = Math.max(RIVER_WIDTH_M[s], 0.6 * cell);
+                double wEff = Math.max(RIVER_WIDTH_M[s], 1.3 * cell);       // >= 1.3 cells: a thinner line cannot be shown by vertex colours (it would turn into dots)
                 wEff = Math.min(wEff, 0.0008 * lambda);                  // far views: thin lines, ~2% land coverage per scale
                 if (cell > 0.05 * lambda) continue;                           // below the resolvable scale for this class
                 double ox = 17.0 * (s + 1), oz = 29.0 * (s + 2);
@@ -104,7 +104,7 @@ public final class RealisticTerrain implements TerrainSampler {
                 double vz = n.noise(x * fr * 0.7 + oz, y * fr * 0.7 - ox, z * fr * 0.7 + 3) * 0.10;
                 double nv = Math.abs(n.fbm((x + vx) * fr + ox * 3, (y + vy) * fr - oz, (z + vz) * fr + 5.5, 3));
                 double hw = (wEff / radius) * fr * 1.4;
-                double m = (1.0 - smooth(hw * 0.35, hw, nv)) * fadeHigh;
+                double m = (1.0 - smooth(0.0, hw, nv)) * fadeHigh;
                 if (m > riverMask) {
                     riverMask = m;
                     carve = Math.min(0.45 * h0 + 2.0, 4.0 + 0.06 * wEff);
@@ -136,9 +136,9 @@ public final class RealisticTerrain implements TerrainSampler {
             double depth = Math.min(1.0, -h / 3500.0);
             double[] shallow = {0.07, 0.42, 0.55}, deep = {0.01, 0.06, 0.22};
             SurfacePalette.mix(c, shallow, deep, Math.pow(depth, 0.45));
-            if (temp < -3.0) {                                            // sea ice
+            if (temp < -8.0) {                                            // sea ice
                 double[] ice = {0.86, 0.92, 0.97};
-                SurfacePalette.mix(c, c, ice, smooth(-3.0, -12.0, temp));
+                SurfacePalette.mix(c, c, ice, smooth(-8.0, -20.0, temp));
             }
             water = true;
         } else {
@@ -153,9 +153,20 @@ public final class RealisticTerrain implements TerrainSampler {
             SurfacePalette.mix(c, c, taiga, smooth(8.0, -2.0, temp) * smooth(0.25, 0.55, moist));
             SurfacePalette.mix(c, c, tundra, smooth(2.0, -8.0, temp));
             SurfacePalette.mix(c, c, rock, smooth(1400.0, 3200.0, h) * 0.85);
-            SurfacePalette.mix(c, c, snow, Math.max(smooth(-4.0, -14.0, temp), smooth(3600.0, 4800.0, h)));
+            SurfacePalette.mix(c, c, snow, Math.max(smooth(-7.0, -19.0, temp), smooth(3600.0, 4800.0, h)));
             SurfacePalette.mix(c, c, sand, (1.0 - smooth(1.0, 9.0, h)) * smooth(-0.002, 0.02, t) * (1.0 - smooth(-2.0, 6.0, -temp)));
-            double tint = 0.93 + 0.14 * n.noise(x * 900 + 3, y * 900, z * 900 - 7);
+            // colour variation from 1.3 km down to 13 m (fades out below the mesh resolution), plus a canopy speckle in forests
+            double tint = 1.0;
+            double[] tf = {3.0e4, 3.0e5, 3.0e6}, ta = {0.10, 0.09, 0.08};
+            for (int k = 0; k < tf.length; k++) {
+                double wl = 2.0 * Math.PI * radius / tf[k];
+                double fade = cell <= 0 ? 1.0 : Math.max(0.0, Math.min(1.0, wl / (2.0 * cell) - 1.0));
+                tint += fade * ta[k] * n.noise(x * tf[k] + 3, y * tf[k] - 5, z * tf[k] + 7 * k);
+            }
+            double forestness = smooth(0.45, 0.75, moist) * smooth(2.0, 12.0, temp) * (1.0 - smooth(1800.0, 3000.0, h));
+            double wlc = 2.0 * Math.PI * radius / 2.4e6;
+            double canopy = cell <= 0 ? 1.0 : Math.max(0.0, Math.min(1.0, wlc / (2.0 * cell) - 1.0));
+            tint *= 1.0 - forestness * canopy * (0.16 + 0.22 * (0.5 + 0.5 * n.noise(x * 2.4e6 + 9, y * 2.4e6, z * 2.4e6 - 4)));
             for (int i = 0; i < 3; i++) c[i] = Math.max(0.0, Math.min(1.0, c[i] * tint));
             water = false;
             if (river > 0.0) {
@@ -177,9 +188,9 @@ public final class RealisticTerrain implements TerrainSampler {
             if (wavelength < 2.0 * cell) err += amp * 0.7;
             amp *= DETAIL_PERSIST; f *= 2.0;
         }
-        return err + Math.min(20.0, 0.12 * cell);
+        return err + Math.min(20.0, 0.12 * Math.max(0.0, cell - 1.0));
     }
 
     /** Heuristic (not provable): relief is rough and rivers are narrow; bounds saturate at the planet radii anyway. */
-    @Override public double slopeBound() { return 8.0; }
+    @Override public double slopeBound() { return 14.0; }
 }
