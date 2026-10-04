@@ -187,11 +187,14 @@ public final class PlanetClient {
         return true;
     }
 
-    /** Topmost non-air block of a client-side column (full scan; diagnostics only). */
+    /** Topmost ground block of a client-side column, ignoring trees and plants (full scan; diagnostics only). */
     static int clientTopSolid(Minecraft mc, int x, int z) {
         var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
-        for (int y = mc.level.getMaxBuildHeight() - 1; y >= mc.level.getMinBuildHeight(); y--)
-            if (!mc.level.getBlockState(pos.set(x, y, z)).isAir()) return y;
+        for (int y = mc.level.getMaxBuildHeight() - 1; y >= mc.level.getMinBuildHeight(); y--) {
+            var st = mc.level.getBlockState(pos.set(x, y, z));
+            // ground only: trees (leaves, logs) and plants are vegetation, not terrain
+            if (!st.isAir() && !st.is(net.minecraft.tags.BlockTags.LEAVES) && !st.is(net.minecraft.tags.BlockTags.LOGS) && st.blocksMotion()) return y;
+        }
         return Integer.MIN_VALUE;
     }
 

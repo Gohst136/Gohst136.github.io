@@ -337,7 +337,7 @@ final class PlanetAutoTest {
         }
         java.util.Collections.sort(diffs);
         double mean = diffs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 3 blocks: %d%% (trees/features count as terrain)",
+        return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 3 blocks: %d%% (ground blocks only: trees and plants ignored)",
                 n, unloaded, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
     }
 
