@@ -247,6 +247,7 @@ final class PlanetAutoTest {
         String line = String.format("alt=%.0fm patches=%d maxLevel=%d splits=%d merges=%d select=%.2fms frame avg=%.1f p95=%.1f p99=%.1f worst=%.1f %s",
                 STOPS[stop], r.patches.size(), r.maxLevel, r.splits, r.merges, selectMs,
                 fs.average(), fs.p95(), fs.p99(), fs.worst(), renderer.stats());
+        line += "\n   " + PlanetClient.bubbleDiag();
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0; stage("stop " + stop);

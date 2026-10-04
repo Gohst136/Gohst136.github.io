@@ -184,6 +184,26 @@ public final class PlanetClient {
         return true;
     }
 
+    /** One-line state of the real-world bubble for the benchmark log. */
+    static String bubbleDiag() {
+        Minecraft mc = Minecraft.getInstance();
+        if (!realWorld) return "bubble: n/a";
+        StringBuilder sb = new StringBuilder("bubble: live=" + bubbleLive + " preloaded=" + preloaded + " pendingTp=" + (pendingTp != null));
+        if (mc.player != null) sb.append(String.format(" player=(%.0f,%.0f,%.0f)", mc.player.getX(), mc.player.getY(), mc.player.getZ()));
+        if (bubble != null && mc.level != null) {
+            int cx = (int) Math.floor(bubble.x0) >> 4, cz = (int) Math.floor(bubble.z0) >> 4, have = 0;
+            for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) if (mc.level.getChunkSource().hasChunk(cx + dx, cz + dz)) have++;
+            sb.append(String.format(" anchorPlane=(%.0f,%.0f) clientChunks5x5=%d/25 ready=%b allSections=%b", bubble.x0, bubble.z0, have, chunksReady(mc), mc.levelRenderer.hasRenderedAllSections()));
+            sb.append(String.format(" realY@anchor=%d", mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, (int) bubble.x0, (int) bubble.z0)));
+        }
+        var server = mc.getSingleplayerServer();
+        if (server != null) {
+            var sp = server.getPlayerList().getPlayers().isEmpty() ? null : server.getPlayerList().getPlayers().get(0);
+            if (sp != null) sb.append(String.format(" serverPlayer=(%.0f,%.0f,%.0f)", sp.getX(), sp.getY(), sp.getZ()));
+        }
+        return sb.toString();
+    }
+
     /** Moves the real (server-side) player; used for the handoff and by the benchmark. */
     static void teleportReal(double x, double y, double z, float yaw, float pitch) {
         var server = Minecraft.getInstance().getSingleplayerServer();
