@@ -42,6 +42,18 @@ final class BubbleFrame {
         return d0.mul(groundRadius + (y - y0)).add(ex.mul(x - x0)).add(ez.mul(z - z0));
     }
 
+    /** Inverse of {@link #position}: planet-frame position -> vanilla (X, Y, Z). */
+    double[] vanillaPos(Vec3 p) {
+        return new double[]{x0 + p.dot(ex), y0 + (p.dot(d0) - groundRadius), z0 + p.dot(ez)};
+    }
+
+    /** Planet-frame direction -> vanilla yaw/pitch in degrees (MC: yaw 0 = +z, 90 = -x; pitch > 0 looks down). */
+    float[] yawPitch(Vec3 planetDir) {
+        Vec3 d = planetDir.normalize();
+        double vx = d.dot(ex), vy = d.dot(ey), vz = d.dot(ez);
+        return new float[]{(float) Math.toDegrees(Math.atan2(-vx, vz)), (float) Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, vy))))};
+    }
+
     Vec3 direction(double x, double y, double z) {
         return ex.mul(x).add(ey.mul(y)).add(ez.mul(z)).normalize();
     }

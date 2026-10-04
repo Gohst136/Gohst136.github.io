@@ -37,6 +37,12 @@ final class VanillaHeights implements DoubleBinaryOperator {
         this.maxY = level.getMaxBuildHeight();
     }
 
+    /**
+     * Empirical correction: the router without jaggedness/3D noise sits low. Measured signed mean error against the
+     * generator: -5.3 m (local grid), -8.4 m (global, std 6.4 m) -> +7 m. Replace by a fine-tier exact correction lattice later.
+     */
+    private static final double BIAS = 7.0;
+
     /** Last solid height found by this thread: consecutive mesh vertices are neighbours, so it is a good starting bracket. */
     private final ThreadLocal<int[]> hint = ThreadLocal.withInitial(() -> new int[]{Integer.MIN_VALUE});
 
@@ -82,7 +88,7 @@ final class VanillaHeights implements DoubleBinaryOperator {
         h[0] = (int) Math.floor(result);
         calls.incrementAndGet();
         nanos.addAndGet(System.nanoTime() - t0);
-        return result - seaLevel;
+        return result - seaLevel + BIAS;
     }
 
     private double d(int x, int y, int z) { return density.compute(new DensityFunction.SinglePointContext(x, y, z)); }

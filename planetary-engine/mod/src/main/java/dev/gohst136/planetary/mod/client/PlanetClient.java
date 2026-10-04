@@ -52,7 +52,11 @@ public final class PlanetClient {
     static boolean active;
     /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
     static Vec3 anchor;
-    static BubbleFrame bubble;
+    static BubbleFrame bubble;                 // frame exists once the real player has been parked at the anchor
+    static boolean bubbleLive;                 // the camera is the real player's (handoff done)
+    private static boolean preloaded;
+    private static long frameCount, preloadFrame;
+    private static double[] pendingTp;         // vanilla feet position the handoff teleport must reach
     private static boolean planetPrepared;
     static Vec3 pos = Vec3.ZERO;
     private static double speed;
@@ -128,6 +132,47 @@ public final class PlanetClient {
         }
     }
 
+    /**
+     * Free flight -> real world handoff. Below 4 km the real player is parked (invisibly) at the anchor so its chunks
+     * load; below 300 m the player is teleported to the exact vanilla pose of the planet camera and, once it has
+     * arrived, the camera becomes the real player's. The planet render is identical before and after: only the real
+     * chunks appear on top of it.
+     */
+    private static void handoff(Minecraft mc, Vec3 radial, Vec3 fwd, double alt) {
+        if (anchor == null || vanilla == null || mc.getSingleplayerServer() == null || mc.player == null) return;
+        frameCount++;
+        double dist = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
+        if (!preloaded && alt < 4000 && dist < 30000) {
+            preloaded = true; preloadFrame = frameCount;
+            bubble = makeBubble();
+            teleportReal(bubble.x0, bubble.y0 + 60, bubble.z0, 0f, 0f);
+            return;
+        }
+        if (!preloaded) return;
+        if (pendingTp == null && alt < 300 && dist < 1500 && frameCount - preloadFrame > 200 && mc.levelRenderer.hasRenderedAllSections()) {
+            double[] v = bubble.vanillaPos(pos);
+            float[] yp = bubble.yawPitch(fwd);
+            pendingTp = new double[]{v[0], v[1] - mc.player.getEyeHeight(), v[2]};
+            teleportReal(pendingTp[0], pendingTp[1], pendingTp[2], yp[0], yp[1]);
+        }
+        if (pendingTp != null && !bubbleLive) {
+            double dx = mc.player.getX() - pendingTp[0], dy = mc.player.getY() - pendingTp[1], dz = mc.player.getZ() - pendingTp[2];
+            if (dx * dx + dy * dy + dz * dz < 9.0) { bubbleLive = true; pendingTp = null; }
+        }
+    }
+
+    /** Moves the real (server-side) player; used for the handoff and by the benchmark. */
+    static void teleportReal(double x, double y, double z, float yaw, float pitch) {
+        var server = Minecraft.getInstance().getSingleplayerServer();
+        if (server == null) return;
+        server.execute(() -> {
+            var sp = server.getPlayerList().getPlayers().get(0);
+            sp.teleportTo(sp.serverLevel(), x, y, z, yaw, pitch);
+            sp.getAbilities().flying = true;
+            sp.onUpdateAbilities();
+        });
+    }
+
     /** Builds the bubble frame at the anchor: planet ground there, real vanilla ground height there. */
     static BubbleFrame makeBubble() {
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
@@ -139,7 +184,7 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void input(MovementInputUpdateEvent e) {
-        if (!active || bubble != null) return;                     // in the bubble the real player moves normally
+        if (!active || bubbleLive) return;                         // in the bubble the real player moves normally
         Input in = e.getInput();
         in.forwardImpulse = 0; in.leftImpulse = 0;
         in.up = in.down = in.left = in.right = in.jumping = in.shiftKeyDown = false;
@@ -149,7 +194,7 @@ public final class PlanetClient {
     public static void render(RenderLevelStageEvent e) {
         if (!active || selector == null) return;
         // free flight owns the whole frame (AFTER_LEVEL); in the bubble the planet is the backdrop of the real world (AFTER_SKY)
-        if (e.getStage() != (bubble != null ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
+        if (e.getStage() != (bubbleLive ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
         Minecraft mc = Minecraft.getInstance();
         long now = System.nanoTime();
         double dt = Math.min(0.1, (now - lastNanos) / 1e9);
@@ -162,7 +207,7 @@ public final class PlanetClient {
         Vec3 fwd = new Vec3(look.x(), look.y(), look.z());
         Vec3 lft = new Vec3(left.x(), left.y(), left.z());
         Vec3 radial = pos.normalize();
-        if (bubble == null) {
+        if (!bubbleLive) {
             double ground = PLANET.radius() + TERRAIN.heightAt(radial);
             double alt = Math.max(1.0, pos.length() - ground);
             speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
@@ -181,6 +226,7 @@ public final class PlanetClient {
             Vec3 nd = pos.normalize();
             double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
             if (pos.length() < minR) pos = nd.mul(minR);
+            handoff(mc, pos.normalize(), fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
         } else {
             // bubble: the camera IS the real player's camera, mapped into the planet frame
             var cp = cam.getPosition();
@@ -188,6 +234,7 @@ public final class PlanetClient {
             fwd = bubble.direction(look.x(), look.y(), look.z());
             radial = pos.normalize();
             speed = 0;
+            if (pos.length() - bubble.groundRadius > 800.0) { bubbleLive = false; pendingTp = null; }   // flew back out of the bubble
         }
 
         Matrix4f projIn = e.getProjectionMatrix();
@@ -200,7 +247,7 @@ public final class PlanetClient {
         Vec3 camUp = new Vec3(up.x(), up.y(), up.z());
         Vec3 desired = radial.sub(fwd.mul(radial.dot(fwd)));
         Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
-        if (bubble != null) {
+        if (bubbleLive) {
             camUp = bubble.direction(up.x(), up.y(), up.z());
             viewRot = new Matrix4f(e.getModelViewMatrix()).mul(bubble.viewTransform());
         } else if (desired.length() > 1e-3) {
@@ -218,7 +265,7 @@ public final class PlanetClient {
         // predictive streaming: where will the camera be in 0.5 s / 1.5 s? Load what it will need, ordered by time-to-visibility
         if (lastPos != null && dt > 1e-4) velocity = velocity.mul(0.7).add(pos.sub(lastPos).mul(0.3 / dt));
         lastPos = pos;
-        if (bubble != null && velocity.length() > 300.0) velocity = Vec3.ZERO;      // a teleport, not a flight: never prefetch along it
+        if (bubbleLive && velocity.length() > 300.0) velocity = Vec3.ZERO;      // a teleport, not a flight: never prefetch along it
         if (velocity.length() > 1.0) {
             for (int i = 0; i < 2; i++) {
                 double horizon = i == 0 ? 0.5 : 1.5;
@@ -240,7 +287,7 @@ public final class PlanetClient {
         RenderSystem.clearColor(0f, 0f, 0f, 1f);
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
         renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
-        if (bubble != null) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
+        if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
 
     @SubscribeEvent

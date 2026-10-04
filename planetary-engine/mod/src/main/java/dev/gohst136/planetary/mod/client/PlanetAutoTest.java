@@ -75,8 +75,8 @@ final class PlanetAutoTest {
             PlanetClient.anchor = targetDir();                   // terrain is flattened around the landing site
             PlanetClient.setActive(true);
         }
-        if (PlanetClient.active && PlanetClient.bubble == null && mc.player != null) aim(mc);
-        if (landing && pendingName == null) landingStep(mc);
+        if (PlanetClient.active && !PlanetClient.bubbleLive && mc.player != null) aim(mc);
+        if (PlanetClient.bubbleLive && mc.player != null) drivePlayer(mc);
     }
 
     static double scriptedSpeed() { return Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
@@ -126,10 +126,10 @@ final class PlanetAutoTest {
             double dt = lastTransitNanos == 0 ? 0 : Math.min(0.1, (now - lastTransitNanos) / 1e9);
             lastTransitNanos = now;
             t += dt;
-            alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 1.0));   // alt/s: v = alt per second, no holds
+            alt = Math.max(STOPS[STOPS.length - 1], alt - Math.min(alt / 1.0, alt < 400 ? 40.0 : 1e18) * dt);   // v = alt per second, capped at 40 m/s below 400 m
         } else if (stop < STOPS.length && hold == 0) {
             t += 1.0 / 30.0;
-            alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 2.0));
+            alt = Math.max(STOPS[STOPS.length - 1], alt - Math.min(alt / 2.0, alt < 400 ? 40.0 : 1e18) / 30.0);   // v = alt/2 per second, capped at 40 m/s below 400 m
             if (alt <= STOPS[stop] * 1.0001) { alt = STOPS[stop]; hold = 1; }
         }
         return targetDir().mul(groundRadius + alt);
@@ -151,8 +151,8 @@ final class PlanetAutoTest {
                 String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | " + renderer.latencySummary(),
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);
-                try { log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
-                transit = false; landing = true; landingTick = 0; pendingName = "final.png";
+                try { log.write(line + "\n" + fidelityStats() + "\n"); log.close(); } catch (IOException ignored) {}
+                transit = false; stopAfterCapture = true; pendingName = "final.png";
             }
             return;
         }
@@ -185,72 +185,38 @@ final class PlanetAutoTest {
         if (stopAfterCapture) mc.execute(mc::stop);
     }
 
-    private static final double[] BUBBLE_ALTS = {300, 100, 30, 8};
-    private static int bubbleStop, bubbleWait, extraWait;
-    private static double bx, bz, by0;
-    private static float byaw, bpitch;
-
-    /**
-     * Bubble check: after the planet descent, bring the REAL player to the anchor (vanilla plane coordinates), switch on
-     * the bubble frame (planet as backdrop, real chunks in front) and screenshot at 300/100/30/8 m above the ground, to
-     * judge the seam between real chunks and the planet mesh. Also reports how far the detail layer is from the
-     * generator's true heights.
-     */
-    private static void landingStep(Minecraft mc) {
-        landingTick++;
-        if (landingTick == 5) {
-            var d = targetDir();
-            int face = dev.gohst136.planetary.planet.CubeSphere.faceOf(d);
-            double half = PlanetClient.PLANET.radius() * Math.PI / 4.0;
-            var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, half, 0.0);
-            bx = m.x1(); bz = m.z1();
-            by0 = PlanetClient.vanilla.exactHeight(bx, bz) + 63.0;
-            Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
-            double w = Math.tan(Math.min(Math.toRadians(60), 0.6 * Math.PI / 2));
-            double dx = tangent.dot(dev.gohst136.planetary.planet.CubeSphere.uAxis(face));
-            double dz = -tangent.dot(dev.gohst136.planetary.planet.CubeSphere.vAxis(face));
-            byaw = (float) Math.toDegrees(Math.atan2(-dx, dz)); bpitch = (float) Math.toDegrees(Math.atan(1.0 / w));
-            double err = 0, signed = 0, worst = 0; int n = 0;
-            for (int i = -4; i < 4; i++) for (int j = -4; j < 4; j++) {
-                double e = PlanetClient.vanilla.applyAsDouble(bx + i * 8, bz + j * 8) - PlanetClient.vanilla.exactHeight(bx + i * 8, bz + j * 8);
-                err += Math.abs(e); signed += e; worst = Math.max(worst, Math.abs(e)); n++;
-            }
-            // global fidelity: 120 scattered plane points (macro-independent), signed so a constant bias can be seen
-            java.util.Random rnd = new java.util.Random(7);
-            double gs = 0, ga = 0, gss = 0; int gn = 120;
-            for (int i = 0; i < gn; i++) {
-                double gx = (rnd.nextDouble() - 0.5) * 8e6, gz = (rnd.nextDouble() - 0.5) * 8e6;
-                double e = PlanetClient.vanilla.applyAsDouble(gx, gz) - PlanetClient.vanilla.exactHeight(gx, gz);
-                gs += e; ga += Math.abs(e); gss += e * e;
-            }
-            double gmean = gs / gn;
-            String gline = String.format("GLOBAL detail-layer error over %d scattered points: mean=%.2f m, mean|err|=%.2f m, std=%.2f m", gn, gmean, ga / gn, Math.sqrt(gss / gn - gmean * gmean));
-            System.out.println("[planetary-autotest] " + gline);
-            String line = String.format("BUBBLE: face=%d plane=(%.0f,%.0f) groundY=%.1f | detail-layer vs generator height: mean |err|=%.2f m, signed mean=%.2f m, worst=%.1f m (n=%d)", face, bx, bz, by0, err / n, signed / n, worst, n);
-            System.out.println("[planetary-autotest] " + line);
-            try { log = new FileWriter(new File(outDir, "stats.txt"), true); log.write(line + "\n" + gline + "\n"); log.close(); } catch (IOException ignored) {}
-            PlanetClient.bubble = PlanetClient.makeBubble();
-            teleport(mc, BUBBLE_ALTS[0]);
-            bubbleWait = 400;                                     // ~20 s: first chunks around the anchor
-        } else if (landingTick > 5 && --bubbleWait <= 0) {
-            if (!mc.levelRenderer.hasRenderedAllSections() && ++extraWait < 600) { bubbleWait = 0; return; }   // wait for the real chunks to be meshed
-            extraWait = 0;
-            String name = String.format("bubble_%03.0fm.png", BUBBLE_ALTS[bubbleStop]);
-            pendingName = name;
-            bubbleStop++;
-            if (bubbleStop >= BUBBLE_ALTS.length) { stopAfterCapture = true; landing = false; }
-            else { teleport(mc, BUBBLE_ALTS[bubbleStop]); bubbleWait = 100; }
-        }
+    /** While the real player's camera is live, the scripted path moves the real player (server-side teleport each tick). */
+    private static void drivePlayer(Minecraft mc) {
+        var frame = PlanetClient.bubble;
+        if (frame == null) return;
+        Vec3 d = targetDir();
+        Vec3 planetPos = d.mul(frame.groundRadius + alt);
+        Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+        Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
+        double[] v = frame.vanillaPos(planetPos);
+        float[] yp = frame.yawPitch(look);
+        PlanetClient.teleportReal(v[0], v[1] - mc.player.getEyeHeight(), v[2], yp[0], yp[1]);
     }
 
-    private static void teleport(Minecraft mc, double alt) {
-        var server = mc.getSingleplayerServer();
-        final double fx = bx, fy = by0 + alt, fz = bz; final float fyaw = byaw, fpitch = bpitch;
-        server.execute(() -> {
-            var sp = server.getPlayerList().getPlayers().get(0);
-            sp.teleportTo(sp.serverLevel(), fx, fy, fz, fyaw, fpitch);
-            sp.getAbilities().flying = true;
-            sp.onUpdateAbilities();
-        });
+    /** Fidelity of the vanilla-detail layer against the generator's true column heights: local grid and scattered points. */
+    private static String fidelityStats() {
+        var d = targetDir();
+        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, PlanetClient.PLANET.radius() * Math.PI / 4.0, 0.0);
+        double bx = m.x1(), bz = m.z1();
+        double err = 0, signed = 0, worst = 0; int n = 0;
+        for (int i = -4; i < 4; i++) for (int j = -4; j < 4; j++) {
+            double e = PlanetClient.vanilla.applyAsDouble(bx + i * 8, bz + j * 8) - PlanetClient.vanilla.exactHeight(bx + i * 8, bz + j * 8);
+            err += Math.abs(e); signed += e; worst = Math.max(worst, Math.abs(e)); n++;
+        }
+        java.util.Random rnd = new java.util.Random(7);
+        double gs = 0, ga = 0, gss = 0; int gn = 120;
+        for (int i = 0; i < gn; i++) {
+            double gx = (rnd.nextDouble() - 0.5) * 8e6, gz = (rnd.nextDouble() - 0.5) * 8e6;
+            double e = PlanetClient.vanilla.applyAsDouble(gx, gz) - PlanetClient.vanilla.exactHeight(gx, gz);
+            gs += e; ga += Math.abs(e); gss += e * e;
+        }
+        double gmean = gs / gn;
+        return String.format("FIDELITY local(8x8 @8m): mean|err|=%.2f signed=%.2f worst=%.1f | global(%d pts): mean=%.2f mean|err|=%.2f std=%.2f",
+                err / n, signed / n, worst, gn, gmean, ga / gn, Math.sqrt(gss / gn - gmean * gmean));
     }
 }
