@@ -12,7 +12,7 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', 'planetary'
-            if (project.hasProperty('autotest')) { systemProperty 'planetary.autotest', 'true'; programArguments.addAll('--width', '640', '--height', '360') }
+            if (project.hasProperty('autotest')) { systemProperty 'planetary.autotest', 'true'; programArguments.addAll('--width', '1280', '--height', '720') }
         }
     }
     mods { planetary { sourceSet sourceSets.main; sourceSet project(':core').sourceSets.main } }

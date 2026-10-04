@@ -59,7 +59,8 @@ final class PlanetAutoTest {
         if (mc.player != null && ++ticksInWorld == 100 && !PlanetClient.active) {
             outDir = new File(mc.gameDirectory, "planetary-autotest");
             outDir.mkdirs();
-            try { log = new FileWriter(new File(outDir, "stats.txt")); } catch (IOException e) { throw new RuntimeException(e); }
+            try { log = new FileWriter(new File(outDir, "stats.txt"));
+                log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.setActive(true);
         }
     }
