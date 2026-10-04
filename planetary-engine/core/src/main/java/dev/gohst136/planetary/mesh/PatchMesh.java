@@ -8,8 +8,8 @@ package dev.gohst136.planetary.mesh;
  * {@code morphPositions} holds, per vertex, the position it would have in the parent (coarser)
  * grid; the vertex shader blends position -> morphPositions by a per-patch morph factor
  * derived from the same screen-space error, giving continuous geomorphing instead of popping.
- * {@code heights} holds the terrain height above the baseline radius per vertex (metres) for shading.
+ * {@code colors} holds RGBA per vertex: RGB surface colour, A = water flag (0 land .. 1 water).
  * Positions/morph: xyz triples. Skirt vertices (last ring) hide cracks between LODs.
  */
-public record PatchMesh(double[] origin, float[] positions, float[] morphPositions, float[] heights,
+public record PatchMesh(double[] origin, float[] positions, float[] morphPositions, float[] colors,
                         int[] indices, int gridCells) {}

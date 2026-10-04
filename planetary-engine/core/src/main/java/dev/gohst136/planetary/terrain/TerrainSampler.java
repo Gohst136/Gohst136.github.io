@@ -27,6 +27,20 @@ public interface TerrainSampler {
     }
 
     /**
+     * Full surface sample for a mesh vertex: out[0] = height, out[1..3] = RGB, out[4] = water (0 land, 1 water).
+     * Default: {@link #sample} geometry coloured by height; climate-aware samplers override it.
+     */
+    default void sampleSurface(Vec3 unitDir, double cellSizeMeters, double[] out) {
+        double[] hh = new double[2];
+        sample(unitDir, cellSizeMeters, hh);
+        out[0] = hh[0];
+        double[] rgb = new double[3];
+        SurfacePalette.byHeight(hh[1], rgb);
+        out[1] = rgb[0]; out[2] = rgb[1]; out[3] = rgb[2];
+        out[4] = hh[1] < 0 ? 1.0 : 0.0;
+    }
+
+    /**
      * Upper bound of height detail (metres) that a mesh with the given cell size cannot
      * represent. Drives screen-space error: it is 0 once the mesh resolves all octaves.
      */

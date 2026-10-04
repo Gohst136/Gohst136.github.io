@@ -19,14 +19,15 @@ public final class PatchMeshBuilder {
         if (n < 2 || (n & 1) != 0) throw new IllegalArgumentException("gridCells must be even and >= 2");
         int w = n + 1;
         Vec3[] pos = new Vec3[w * w];
-        float[] colorH = new float[w * w + 4 * n];
-        double[] smp = new double[2];
+        float[] colorV = new float[(w * w + 4 * n) * 4];
+        double[] smp = new double[5];
         final double cell = planet.radius() * (Math.PI / 2.0) / (double) (1L << k.level()) / n;
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             Vec3 d = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n);
-            terrain.sample(d, cell, smp);
+            terrain.sampleSurface(d, cell, smp);
             pos[j * w + i] = d.mul(planet.radius() + smp[0]);
-            colorH[j * w + i] = (float) smp[1];
+            int ci = (j * w + i) * 4;
+            colorV[ci] = (float) smp[1]; colorV[ci + 1] = (float) smp[2]; colorV[ci + 2] = (float) smp[3]; colorV[ci + 3] = (float) smp[4];
         }
         Vec3 centerDir = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), 0.5, 0.5);
         Vec3 o = centerDir.mul(planet.radius() + terrain.heightAt(centerDir, cell));
@@ -37,12 +38,11 @@ public final class PatchMeshBuilder {
 
         int skirtCount = 4 * n;
         int total = w * w + skirtCount;
-        float[] p = new float[total * 3], m = new float[total * 3], hs = new float[total];
+        float[] p = new float[total * 3], m = new float[total * 3];
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             int idx = j * w + i;
             put(p, idx, pos[idx].sub(o));
             put(m, idx, morphed(pos, w, n, i, j).sub(o));
-            hs[idx] = colorH[idx];
         }
         int[] ring = new int[skirtCount];
         int r = 0;
@@ -55,7 +55,7 @@ public final class PatchMeshBuilder {
             Vec3 down = pos[src].normalize().mul(-skirt);
             put(p, dst, pos[src].add(down).sub(o));
             put(m, dst, morphed(pos, w, n, src % w, src / w).add(down).sub(o));
-            hs[dst] = hs[src];
+            System.arraycopy(colorV, src * 4, colorV, dst * 4, 4);
         }
         int[] idx = new int[(n * n * 6) + skirtCount * 6];
         int t = 0;
@@ -68,7 +68,7 @@ public final class PatchMeshBuilder {
             int sa = w * w + s, sb = w * w + (s + 1) % skirtCount;
             idx[t++] = a; idx[t++] = sa; idx[t++] = b; idx[t++] = b; idx[t++] = sa; idx[t++] = sb;
         }
-        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, hs, idx, n);
+        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, colorV, idx, n);
     }
 
     /** Position this vertex takes in the 2x coarser grid (odd indices collapse onto neighbours). */

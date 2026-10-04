@@ -42,8 +42,8 @@ public final class PlanetClient {
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
-    static PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
-    static TerrainSampler TERRAIN = new ProceduralTerrain(PLANET);
+    static PlanetDefinition PLANET = PlanetDefinition.earth(20240601L);
+    static TerrainSampler TERRAIN = new dev.gohst136.planetary.terrain.RealisticTerrain(PLANET);
     static VanillaHeights vanilla;
     static String terrainMode = "procedural";
 
@@ -107,36 +107,41 @@ public final class PlanetClient {
         }
     }
 
-    /** Decides planet definition and vanilla source (singleplayer only); idempotent. */
+    /**
+     * Decides the planet. Default: the realistic Earth-like planet (RealisticTerrain). With -Dplanetary.vanillaBubble=true
+     * (singleplayer only) the old vanilla-worldgen detail layer is used instead, which is what real vanilla chunks match.
+     */
     static void preparePlanet(Minecraft mc) {
         if (planetPrepared) return;
         planetPrepared = true;
         var server = mc.getSingleplayerServer();
-        if (server != null && !Boolean.getBoolean("planetary.noVanilla")) {
-            PLANET = PlanetDefinition.earthlikeVanilla(server.overworld().getSeed());
+        long seed = server != null ? server.overworld().getSeed() : 20240601L;
+        if (server != null && Boolean.getBoolean("planetary.vanillaBubble")) {
+            PLANET = PlanetDefinition.earthlikeVanilla(seed);
             vanilla = new VanillaHeights(server.overworld());
+        } else {
+            PLANET = PlanetDefinition.earth(seed);
         }
     }
 
-    /** Singleplayer: macro planet shape (flattened around the landing anchor) + real vanilla worldgen detail. */
     private static void chooseTerrain(Minecraft mc) {
         preparePlanet(mc);
-        TerrainSampler macro = new ProceduralTerrain(PLANET);
-        if (anchor != null) macro = new dev.gohst136.planetary.terrain.FlattenedTerrain(macro, anchor, PLANET.radius(), 1000, 8000);
         if (vanilla != null) {
+            TerrainSampler macro = new ProceduralTerrain(PLANET);
+            if (anchor != null) macro = new dev.gohst136.planetary.terrain.FlattenedTerrain(macro, anchor, PLANET.radius(), 1000, 8000);
             TERRAIN = new HybridTerrain(PLANET, macro, vanilla, 1500, 4000, 60, 0.06);
             terrainMode = "hybrid (procedural macro" + (anchor != null ? " flattened 1-8 km around the anchor" : "") + " + vanilla worldgen detail, seed " + PLANET.seed() + ")";
         } else {
-            TERRAIN = macro;
-            terrainMode = "procedural";
+            TERRAIN = new dev.gohst136.planetary.terrain.RealisticTerrain(PLANET);
+            terrainMode = "realistic planet (continents, oceans, mountain belts, rivers, climate), seed " + PLANET.seed();
         }
     }
 
     /**
-     * Free flight -> real world handoff. Below 4 km the real player is parked (invisibly) at the anchor so its chunks
-     * load; below 300 m the player is teleported to the exact vanilla pose of the planet camera and, once it has
-     * arrived, the camera becomes the real player's. The planet render is identical before and after: only the real
-     * chunks appear on top of it.
+     * Free flight -> real world handoff (vanilla-bubble path only). Below 4 km the real player is parked (invisibly) at the
+     * anchor so its chunks load; below 300 m the player is teleported to the exact vanilla pose of the planet camera and,
+     * once it has arrived, the camera becomes the real player's. The planet render is identical before and after: only
+     * the real chunks appear on top of it.
      */
     private static void handoff(Minecraft mc, Vec3 radial, Vec3 fwd, double alt) {
         if (anchor == null || vanilla == null || mc.getSingleplayerServer() == null || mc.player == null) return;

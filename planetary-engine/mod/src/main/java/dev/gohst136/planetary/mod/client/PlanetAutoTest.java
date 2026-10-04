@@ -39,6 +39,14 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished, stopAfterCapture, landing;
+    // orbit tour: eight views of the whole planet from 9,000 km (continents, oceans, ice caps, both poles)
+    private static boolean orbit;
+    private static int orbitIdx, orbitHold;
+    private static final Vec3[] ORBIT_DIRS = {
+            new Vec3(1, 0, 0), new Vec3(0, 0, 1), new Vec3(-1, 0, 0), new Vec3(0, 0, -1),
+            new Vec3(0.7, 0.7, 0).normalize(), new Vec3(0.5, -0.7, -0.5).normalize(),
+            new Vec3(0.05, 1, 0.05).normalize(), new Vec3(0.05, -1, 0.05).normalize()};
+    private static final double ORBIT_ALT = 9.0e6;
     private static int landingTick;
     private static boolean clearPending;
     private static String targetInfo = "";
@@ -72,30 +80,35 @@ final class PlanetAutoTest {
             try { log = new FileWriter(new File(outDir, "stats.txt"));
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.preparePlanet(mc);
-            PlanetClient.anchor = targetDir();                   // terrain is flattened around the landing site
+            if (PlanetClient.vanilla != null) PlanetClient.anchor = targetDir();   // vanilla path: terrain is flattened around the landing site
             PlanetClient.setActive(true);
         }
         if (PlanetClient.active && !PlanetClient.bubbleLive && mc.player != null) aim(mc);
         if (PlanetClient.bubbleLive && mc.player != null) drivePlayer(mc);
     }
 
-    static double scriptedSpeed() { return Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
+    static double scriptedSpeed() { return orbit ? 0.0 : Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
 
     /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
         if (target == null) {
-            var search = new dev.gohst136.planetary.terrain.ProceduralTerrain(PlanetClient.PLANET);
+            final boolean vanillaPath = PlanetClient.vanilla != null;
+            final double wanted = vanillaPath ? 2000.0 : 300.0;
+            dev.gohst136.planetary.terrain.TerrainSampler search = vanillaPath
+                    ? new dev.gohst136.planetary.terrain.ProceduralTerrain(PlanetClient.PLANET)
+                    : new dev.gohst136.planetary.terrain.RealisticTerrain(PlanetClient.PLANET);
             double bestErr = 1e18, bestH = 0; Vec3 bestDir = new Vec3(1, 0, 0);
             int n = 100_000;
             for (int i = 0; i < n; i++) {
                 double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
                 if (d.x() * PlanetClient.SUN[0] + d.y() * PlanetClient.SUN[1] + d.z() * PlanetClient.SUN[2] < 0.5) continue;   // day side only
-                double h = search.heightAt(d);                       // macro only: 100k vanilla samples would freeze the render thread
-                if (Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
+                if (!vanillaPath && Math.abs(d.y()) > 0.8) continue;           // temperate/tropical latitudes
+                double h = search.heightAt(d, 1e9);                   // coarse only: fast, no per-point vanilla/rivers cost
+                if (Math.abs(h - wanted) < bestErr) { bestErr = Math.abs(h - wanted); bestDir = d; bestH = h; }
             }
             target = bestDir;
-            targetInfo = String.format("TARGET: dir=%s macroHeight=%.0f m (closest to 2000 m, day side)", target, bestH);
+            targetInfo = String.format("TARGET: dir=%s height=%.0f m (day side)", target, bestH);
             System.out.println("[planetary-autotest] " + targetInfo);
         }
         return target;
@@ -110,6 +123,12 @@ final class PlanetAutoTest {
 
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
+        if (orbit) {
+            Vec3 l = ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(-1);
+            mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
+            mc.player.setYRot((float) Math.toDegrees(Math.atan2(-l.x(), l.z())));
+            return;
+        }
         Vec3 d = targetDir();
         Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
         Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
@@ -120,6 +139,7 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
         double groundRadius = targetGround;
+        if (orbit) return ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(PlanetClient.PLANET.radius() + ORBIT_ALT);
         if (transit) {
             // REAL time (clamped), so streaming gets exactly as long as in a genuine flight
             long now = System.nanoTime();
@@ -156,6 +176,13 @@ final class PlanetAutoTest {
             }
             return;
         }
+        if (orbit) {
+            if (++orbitHold < 40 || (!renderer.settled() && orbitHold < 600)) return;
+            pendingName = String.format("orbit_%d.png", orbitIdx);
+            orbitIdx++; orbitHold = 0;
+            if (orbitIdx >= ORBIT_DIRS.length) { orbit = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; }
+            return;
+        }
         if (stop >= STOPS.length) return;
         frames++;
         if (hold == 0) return;
@@ -171,7 +198,7 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0;
-        if (stop >= STOPS.length) { transit = true; clearPending = true; t = 0; alt = STOPS[0]; }
+        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = 0; }
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }
@@ -200,6 +227,7 @@ final class PlanetAutoTest {
 
     /** Fidelity of the vanilla-detail layer against the generator's true column heights: local grid and scattered points. */
     private static String fidelityStats() {
+        if (PlanetClient.vanilla == null) return "FIDELITY n/a (no vanilla layer in the realistic-planet path)";
         var d = targetDir();
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, PlanetClient.PLANET.radius() * Math.PI / 4.0, 0.0);
         double bx = m.x1(), bz = m.z1();

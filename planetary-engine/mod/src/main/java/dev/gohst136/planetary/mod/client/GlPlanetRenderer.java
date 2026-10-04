@@ -107,11 +107,11 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     public void upload(PatchKey key, PatchMesh mesh) {
         Gpu g = new Gpu();
         int n = mesh.positions().length / 3;
-        ByteBuffer vb = MemoryUtil.memAlloc(n * 28);
+        ByteBuffer vb = MemoryUtil.memAlloc(n * 40);
         for (int i = 0; i < n; i++) {
             vb.putFloat(mesh.positions()[i * 3]).putFloat(mesh.positions()[i * 3 + 1]).putFloat(mesh.positions()[i * 3 + 2]);
             vb.putFloat(mesh.morphPositions()[i * 3]).putFloat(mesh.morphPositions()[i * 3 + 1]).putFloat(mesh.morphPositions()[i * 3 + 2]);
-            vb.putFloat(mesh.heights()[i]);
+            vb.putFloat(mesh.colors()[i * 4]).putFloat(mesh.colors()[i * 4 + 1]).putFloat(mesh.colors()[i * 4 + 2]).putFloat(mesh.colors()[i * 4 + 3]);
         }
         vb.flip();
         ByteBuffer ib = MemoryUtil.memAlloc(mesh.indices().length * 4);
@@ -127,18 +127,18 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, g.ebo);
         GlStateManager._glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ib, GL15.GL_STATIC_DRAW);
         GlStateManager._enableVertexAttribArray(0);
-        GlStateManager._vertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 28, 0);
+        GlStateManager._vertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 40, 0);
         GlStateManager._enableVertexAttribArray(1);
-        GlStateManager._vertexAttribPointer(1, 3, GL11.GL_FLOAT, false, 28, 12);
+        GlStateManager._vertexAttribPointer(1, 3, GL11.GL_FLOAT, false, 40, 12);
         GlStateManager._enableVertexAttribArray(2);
-        GlStateManager._vertexAttribPointer(2, 1, GL11.GL_FLOAT, false, 28, 24);
+        GlStateManager._vertexAttribPointer(2, 4, GL11.GL_FLOAT, false, 40, 24);
         GlStateManager._glBindVertexArray(0);
         MemoryUtil.memFree(vb);
         MemoryUtil.memFree(ib);
 
         g.indexCount = mesh.indices().length;
         g.origin = mesh.origin();
-        g.bytes = (long) n * 28 + (long) mesh.indices().length * 4;
+        g.bytes = (long) n * 40 + (long) mesh.indices().length * 4;
         g.lastUsedFrame = frame;
         residentBytes += g.bytes;
         uploadsTotal++;

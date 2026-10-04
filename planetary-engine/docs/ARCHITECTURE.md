@@ -1,72 +1,55 @@
-# Planetary Engine — Architecture & Phase 1 status
+# Planetary Engine — architecture and status against the goal
 
-## 0. Starting-task findings (honest)
-- The repo this was started in (`Gohst136.github.io`) is a static web site; **no NeoForge project existed**, so this
-  is a fresh scaffold in `planetary-engine/`. Nothing about existing Minecraft/NeoForge code could be inspected.
-- Environment: Java 21 + Gradle, **no Minecraft client/GPU/display**, and `maven.neoforged.net` was unreachable.
-  Therefore: `:core` (pure Java) is compiled and unit-tested; `:mod` (NeoForge glue) is **written but never compiled**
-  (enable with `gradle -PwithMod=true`). No rendering has been run or measured.
+Goal (see the master prompt): fly from a Minecraft block to space and to another planet and back to blocks, with no loading
+screens, no visible LOD pops and no dimension hops. This file tracks what exists, what was measured, and what is missing.
 
-## 1. Module split
-| Module | Depends on | Contents | Status |
-|---|---|---|---|
-| `core` | JDK only | coords, cube-sphere, terrain sampler, quadtree SSE selector, mesh builder, telemetry, `RenderBackend` interface | built + 13 tests passing |
-| `mod`  | NeoForge 1.21.1, `core` | entry point; later: GL backend, render hooks, networking, commands | scaffold only, uncompiled |
+## Decisions
+- **The planet is its own realistic world, not vanilla.** Continents, huge oceans, mountain belts, rivers, climate and ice caps
+  come from `RealisticTerrain` (pure function of seed, direction and mesh cell size). Vanilla worldgen is NOT the planet:
+  at planet scale its km-sized features look like noise from orbit. A vanilla-derived path (`-Dplanetary.vanillaBubble=true`)
+  still exists as an experiment and is what the real-chunk handoff below was proven with.
+- **Real chunks must come from the planet.** Next step: a custom `ChunkGenerator` that fills chunks from `RealisticTerrain`
+  through `PlaneUnwrap`, so blocks near the player match the planet mesh (continents, rivers, biomes). Until then the real
+  world and the planet only match in the vanilla path.
+- **Pure-Java core + thin GPU layer.** `:core` is JDK-only and unit-tested headlessly; `:mod` is NeoForge + OpenGL glue.
 
-Pure Java (headless-testable): coordinates, floating origin, planet data, terrain/worldgen sampling, LOD selection,
-mesh generation, streaming scheduler, prediction, collision math, telemetry.
-Needs GPU/render work: buffer upload, shaders (geomorph, atmosphere), indirect draw/culling, Hi-Z, debug draw.
+## Modules and packages (`dev.gohst136.planetary`)
+| Package | Role |
+|---|---|
+| `coord` | `UniversePos` (64-bit sector + double offset), `FloatingOrigin` |
+| `planet` | `PlanetDefinition`, `CubeSphere` (equal-angle faces, inverse mapping), `PlaneUnwrap` (mirror-free face -> flat plane, edge blending) |
+| `terrain` | `RealisticTerrain`, `Noise3`, `SurfacePalette`, `HybridTerrain`/`FlattenedTerrain` (vanilla path), `ProceduralTerrain` |
+| `lod` | `QuadtreeSelector` (screen-space error, horizon+frustum culling, hysteresis, velocity relax, budget feedback), `PatchBounds`, `CameraView` |
+| `mesh` | `PatchMeshBuilder` (grid + skirt + geomorph targets + vertex colours) |
+| `telemetry` | `FrameStats` (avg/median/p95/p99/worst) |
+| `render` | `RenderBackend` interface |
+| `mod/client` | `GlPlanetRenderer` (OpenGL 3.2, priority mesh jobs, predictive prefetch, VRAM budget), `PlanetShaders` (geomorph, log-depth, water glint, 1 m / 16 m lattice, atmosphere pass), `PlanetClient` (free flight, handoff), `BubbleFrame`, `PlanetAutoTest` (scripted benchmark) |
 
-## 2. Vanilla assumptions to bypass (to be verified against the real 1.21.1 sources once the mod compiles)
-- Entity/camera positions are `double` and chunk coords are `int`: universe position lives in `UniversePos`; vanilla
-  only ever sees a planet-local, origin-near coordinate inside the simulation bubble.
-- Chunk loading is driven by `ChunkMap`/view distance and 384-high columns: bubble chunks are real; the planet surface
-  outside it is never chunked. A flat vanilla bubble on a sphere needs a local tangent-plane frame (Phase 6).
-- `LevelRenderer` far clip / fog / sky: far-plane + sky replaced at `RenderLevelStageEvent`; no mixin planned for Phase 2.
-- Movement speed clamps / `Player` tick collision: Phase 8 (swept collision, own integrator outside the bubble).
-- Packet position encoding (`ClientboundMoveEntity`, int-delta limits): Phase 11, separate visual-position channel.
+## What works (measured on an RTX 2060, 1280x720, via `watch-autotest.bat`)
+- Descent 20,000 km -> 2 m above ground, continuous: level 19 (~1 m cells), ~8.4 ms/frame, p99 ~11 ms, VRAM 30-110 MB.
+- Streaming with a cold cache (real-time flight at v = altitude per second): 0 hole frames, 0 fallback frames, latency
+  p50 ~180 ms / p95 ~600 ms (`GlPlanetRenderer`: priority queue by time-to-visibility, 0.5 s / 1.5 s look-ahead, pinned coarse levels).
+- Atmosphere: analytic Rayleigh + Mie single scattering, continuous from orbit to ground; procedural star field in space.
+- Camera: floating-origin style (camera-relative doubles -> floats), logarithmic depth, auto-levelled to the local vertical.
+- Vanilla path (proof of concept): real chunks in front of the planet backdrop, handoff at 300 m with exact pose match,
+  mirror-free plane mapping, detail layer within ~6 m (std) of the generator after a +7 m bias correction.
 
-## 3. Package layout (`dev.gohst136.planetary`)
-`math`, `coord` (UniversePos, FloatingOrigin), `planet` (PlanetDefinition, CubeSphere), `terrain` (TerrainSampler,
-ProceduralTerrain), `lod` (PatchKey, PatchBounds, CameraView, QuadtreeSelector), `mesh` (PatchMeshBuilder, PatchMesh),
-`render` (RenderBackend), `telemetry` (FrameStats). Planned: `stream`, `physics`, `net`, `compat`, `debug`.
+## Measured, honest limitations
+- Pop-in is only measured by proxies (fallback/hole frames, split/merge counts), not by image differences.
+- Rivers are noise level sets, not hydrology: they look like river systems but do not strictly flow downhill.
+- Heights between patch samples are bounded heuristically (slope bound), not provably, for `RealisticTerrain`.
+- Three-face cube corners are only approximately continuous in `PlaneUnwrap`.
+- No 2:1 neighbour constraint between LOD levels yet (skirts + geomorph weights hide cracks).
+- No multiplayer protocol, no real physics regimes, no multiple planets, no GPU-driven culling, no ray tracing.
 
-## 4. What Phase 1 implements (and how)
-- **Coordinates**: 64-bit sector index + double offset (2^20 m sectors); exact-ish relative math at 1e15+ m. Floating origin with block-snapped rebasing.
-- **Planet**: data record; cube sphere with equal-angle warp; edges shared exactly between faces.
-- **Terrain**: seeded 3D value-noise fBm on the unit sphere (no seams/pole pinch), deterministic; exposes `unresolvedDetail(cell)` for error.
-- **Selection**: per face quadtree; screen-space error `eps(c)=unresolved(c)+c²/8R`, projected by `H/(2 d tan(fov/2))`;
-  horizon + frustum culling; split at `T`, merge below `T*0.6` (hysteresis); velocity relaxation; adaptive budget feedback.
-- **Mesh**: (N+1)² grid, skirt, per-vertex geomorph target (parent grid position) for GPU morphing, patch-relative float vertices.
-- **Telemetry**: frame-time avg/median/p95/p99/worst.
+## Roadmap (phase numbers from the master prompt)
+1-5 done (planet, rendering from space, continuous quadtree refinement, coordinates, orbit -> surface). 6 in progress
+(real blocks: proven with vanilla; needs the custom chunk generator). 7 done for the camera path (predictive streaming).
+Next: custom chunk generator (6), swept collision + speed regimes (8), several bodies + orbits (9-10), server-authoritative
+correction and networking (11), vehicles/compat (12), GPU-driven culling with Hi-Z and indirect draws (13), optional RT (14).
 
-### Measured (CPU only, headless, this container; `DescentBenchmarkTest`)
-20,000 km → 2 m descent, 1167 frames at 60 Hz timestep, 70° FOV, 1080p, 0.75 px threshold: refines to level 19 (~1 m cells),
-max 45 patches (straight-down view), 0 merges (no flicker), selection ≈0.1 ms avg / 0.9 ms p99. Horizon view at 1 km: 60 patches.
-These counts say the *selection* is cheap; they say nothing about GPU cost, streaming, or visual quality.
-
-## 5. Known gaps / risks (ordered)
-1. ~~Patch bounds heuristic~~ → now sampled min/max widened by a Lipschitz bound (`TerrainSampler.slopeBound()`), checked by randomized tests. The bound is only as correct as each sampler's implementation; a vanilla-worldgen sampler will need its own bound.
-2. **Low patch counts partly reflect smooth terrain**: real vanilla-like terrain has far more high-frequency energy; error model must be calibrated against real worldgen.
-3. **LOD cracks**: skirts + per-patch geomorph weight (`SelectedPatch.morphToParent`) exist; no 2:1 neighbour constraint, no shader yet.
-4. **Float vertex precision** is fine patch-relative; per-patch double camera offsets must be done by the backend.
-5. **Vanilla bubble ↔ sphere**: flat chunk grid vs. curved surface — the hardest visual problem (Phase 6). Needs a curvature warp that stays crack-free.
-6. **Vanilla worldgen sampling** cost/determinism (noise router, biome source) at coarse levels is unexplored.
-7. **Multiplayer**: client prediction must never touch authoritative state; protocol undesigned.
-8. Mod module uncompiled; NeoForge/ModDevGradle versions (`21.1.172`, `2.0.78`) are unverified guesses.
-
-## 6. Phase 1 → 2 task list
-0. **Blocked on environment**: allow `maven.neoforged.net`, `libraries.minecraft.net`, `piston-meta.mojang.com` in the cloud environment's network policy (or build locally).
-1. Compile `:mod` where NeoForge maven is reachable; pin real versions.
-2. GL backend: upload `PatchMesh`, draw with per-patch double→float camera offset (hook `RenderLevelStageEvent`).
-3. Geomorph vertex shader fed by morph factor from the same SSE; atmosphere-less planet shading (Phase 2).
-4. Debug overlay: patch bounds/levels/SSE, `FrameStats`, floating-origin state.
-5. Worker pool + bounded queues for mesh jobs; upload budget per frame.
-6. Add neighbour-level (2:1) constraint across faces. (Bounds done.)
-
-Run tests: `cd planetary-engine && gradle :core:test`
-
-## 7. Automated test loop
-`watch-autotest.bat` (on the dev PC) polls origin, runs `run-autotest.bat` for every new non-results commit and pushes
-`autotest-results/` (with `tested-commit.txt`). The cloud session polls for fresh results and continues from them.
-Real-time TRANSIT line in `stats.txt`: `fallbackFrames`/`holeFrames` are the pop-in proxies (target: 0 holes).
+## Test loop
+`watch-autotest.bat` (dev PC) pulls every new commit, runs `run-autotest.bat` (Minecraft client, scripted benchmark) and pushes
+`autotest-results/` (stats, screenshots, log, `tested-commit.txt`); the cloud session reads and continues.
+Autotest output: 8 altitude stops, an 8-view orbit tour (`orbit_*.png`), a cold-cache real-time transit, target/fidelity lines.
+Unit tests: `gradle :core:test` (coordinates, cube sphere, bounds, selector, realistic terrain statistics, plane-unwrap continuity).
