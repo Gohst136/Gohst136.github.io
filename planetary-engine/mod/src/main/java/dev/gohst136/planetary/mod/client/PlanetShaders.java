@@ -120,8 +120,10 @@ final class PlanetShaders {
             }
 
             void main() {
-                vec4 v = uInvProj * vec4(vNdc, 1.0, 1.0);
+                // near-plane point: with far=1e9 the far-plane point sits at infinity (w ~ 0 -> NaN)
+                vec4 v = uInvProj * vec4(vNdc, -1.0, 1.0);
                 vec3 d = normalize(transpose(mat3(uView)) * normalize(v.xyz / v.w));
+                if (any(isnan(d))) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
                 float mu = dot(d, uUp);
                 vec2 atm = sphere(mu, uAtmH);
                 if (atm.y <= 0.0 || atm.x > atm.y) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
