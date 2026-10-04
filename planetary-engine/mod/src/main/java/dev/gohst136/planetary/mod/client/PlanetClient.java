@@ -50,6 +50,10 @@ public final class PlanetClient {
     /** Unit vector towards the sun in the planet frame. */
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean active;
+    /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
+    static Vec3 anchor;
+    static BubbleFrame bubble;
+    private static boolean planetPrepared;
     static Vec3 pos = Vec3.ZERO;
     private static double speed;
     private static long lastNanos;
@@ -99,24 +103,43 @@ public final class PlanetClient {
         }
     }
 
-    /** Singleplayer: macro planet shape + real vanilla worldgen detail. Otherwise: pure procedural fallback. */
-    private static void chooseTerrain(Minecraft mc) {
+    /** Decides planet definition and vanilla source (singleplayer only); idempotent. */
+    static void preparePlanet(Minecraft mc) {
+        if (planetPrepared) return;
+        planetPrepared = true;
         var server = mc.getSingleplayerServer();
         if (server != null && !Boolean.getBoolean("planetary.noVanilla")) {
             PLANET = PlanetDefinition.earthlikeVanilla(server.overworld().getSeed());
             vanilla = new VanillaHeights(server.overworld());
-            TERRAIN = new HybridTerrain(PLANET, new ProceduralTerrain(PLANET), vanilla, 1500, 4000, 60, 0.06);
-            terrainMode = "hybrid (procedural macro + vanilla worldgen detail, seed " + PLANET.seed() + ")";
+        }
+    }
+
+    /** Singleplayer: macro planet shape (flattened around the landing anchor) + real vanilla worldgen detail. */
+    private static void chooseTerrain(Minecraft mc) {
+        preparePlanet(mc);
+        TerrainSampler macro = new ProceduralTerrain(PLANET);
+        if (anchor != null) macro = new dev.gohst136.planetary.terrain.FlattenedTerrain(macro, anchor, PLANET.radius(), 1000, 8000);
+        if (vanilla != null) {
+            TERRAIN = new HybridTerrain(PLANET, macro, vanilla, 1500, 4000, 60, 0.06);
+            terrainMode = "hybrid (procedural macro" + (anchor != null ? " flattened 1-8 km around the anchor" : "") + " + vanilla worldgen detail, seed " + PLANET.seed() + ")";
         } else {
+            TERRAIN = macro;
             terrainMode = "procedural";
         }
+    }
+
+    /** Builds the bubble frame at the anchor: planet ground there, real vanilla ground height there. */
+    static BubbleFrame makeBubble() {
+        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
+        double y0 = vanilla.exactHeight(m.x1(), m.z1()) + 63.0;
+        return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius() + TERRAIN.heightAt(anchor), y0);
     }
 
     static String terrainStats() { return terrainMode + (vanilla != null ? " | " + vanilla.stats() : ""); }
 
     @SubscribeEvent
     public static void input(MovementInputUpdateEvent e) {
-        if (!active) return;
+        if (!active || bubble != null) return;                     // in the bubble the real player moves normally
         Input in = e.getInput();
         in.forwardImpulse = 0; in.leftImpulse = 0;
         in.up = in.down = in.left = in.right = in.jumping = in.shiftKeyDown = false;
@@ -124,7 +147,9 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent e) {
-        if (!active || e.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL || selector == null) return;
+        if (!active || selector == null) return;
+        // free flight owns the whole frame (AFTER_LEVEL); in the bubble the planet is the backdrop of the real world (AFTER_SKY)
+        if (e.getStage() != (bubble != null ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
         Minecraft mc = Minecraft.getInstance();
         long now = System.nanoTime();
         double dt = Math.min(0.1, (now - lastNanos) / 1e9);
@@ -137,24 +162,33 @@ public final class PlanetClient {
         Vec3 fwd = new Vec3(look.x(), look.y(), look.z());
         Vec3 lft = new Vec3(left.x(), left.y(), left.z());
         Vec3 radial = pos.normalize();
-        double ground = PLANET.radius() + TERRAIN.heightAt(radial);
-        double alt = Math.max(1.0, pos.length() - ground);
-        speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
+        if (bubble == null) {
+            double ground = PLANET.radius() + TERRAIN.heightAt(radial);
+            double alt = Math.max(1.0, pos.length() - ground);
+            speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
 
-        var o = mc.options;
-        Vec3 move = Vec3.ZERO;
-        if (o.keyUp.isDown()) move = move.add(fwd);
-        if (o.keyDown.isDown()) move = move.sub(fwd);
-        if (o.keyLeft.isDown()) move = move.add(lft);
-        if (o.keyRight.isDown()) move = move.sub(lft);
-        if (o.keyJump.isDown()) move = move.add(radial);
-        if (o.keyShift.isDown()) move = move.sub(radial);
-        if (move.length() > 0) pos = pos.add(move.normalize().mul(speed * dt));
-        if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); }
-        // minimal terrain contact: never go below 2 m above the ground (swept collision comes in Phase 8)
-        Vec3 nd = pos.normalize();
-        double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
-        if (pos.length() < minR) pos = nd.mul(minR);
+            var o = mc.options;
+            Vec3 move = Vec3.ZERO;
+            if (o.keyUp.isDown()) move = move.add(fwd);
+            if (o.keyDown.isDown()) move = move.sub(fwd);
+            if (o.keyLeft.isDown()) move = move.add(lft);
+            if (o.keyRight.isDown()) move = move.sub(lft);
+            if (o.keyJump.isDown()) move = move.add(radial);
+            if (o.keyShift.isDown()) move = move.sub(radial);
+            if (move.length() > 0) pos = pos.add(move.normalize().mul(speed * dt));
+            if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); }
+            // minimal terrain contact: never go below 2 m above the ground (swept collision comes in Phase 8)
+            Vec3 nd = pos.normalize();
+            double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
+            if (pos.length() < minR) pos = nd.mul(minR);
+        } else {
+            // bubble: the camera IS the real player's camera, mapped into the planet frame
+            var cp = cam.getPosition();
+            pos = bubble.position(cp.x, cp.y, cp.z);
+            fwd = bubble.direction(look.x(), look.y(), look.z());
+            radial = pos.normalize();
+            speed = 0;
+        }
 
         Matrix4f projIn = e.getProjectionMatrix();
         double tanHalf = 1.0 / projIn.m11();
@@ -166,7 +200,10 @@ public final class PlanetClient {
         Vec3 camUp = new Vec3(up.x(), up.y(), up.z());
         Vec3 desired = radial.sub(fwd.mul(radial.dot(fwd)));
         Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
-        if (desired.length() > 1e-3) {
+        if (bubble != null) {
+            camUp = bubble.direction(up.x(), up.y(), up.z());
+            viewRot = new Matrix4f(e.getModelViewMatrix()).mul(bubble.viewTransform());
+        } else if (desired.length() > 1e-3) {
             desired = desired.normalize();
             camUp = desired;
             org.joml.Vector3f dv = viewRot.transformDirection(new org.joml.Vector3f((float) desired.x(), (float) desired.y(), (float) desired.z()));
@@ -202,6 +239,7 @@ public final class PlanetClient {
         RenderSystem.clearColor(0f, 0f, 0f, 1f);
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
         renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
+        if (bubble != null) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
 
     @SubscribeEvent

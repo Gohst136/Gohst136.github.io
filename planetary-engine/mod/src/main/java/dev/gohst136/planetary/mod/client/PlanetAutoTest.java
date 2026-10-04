@@ -71,9 +71,11 @@ final class PlanetAutoTest {
             outDir.mkdirs();
             try { log = new FileWriter(new File(outDir, "stats.txt"));
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
+            PlanetClient.preparePlanet(mc);
+            PlanetClient.anchor = targetDir();                   // terrain is flattened around the landing site
             PlanetClient.setActive(true);
         }
-        if (PlanetClient.active && mc.player != null) aim(mc);
+        if (PlanetClient.active && PlanetClient.bubble == null && mc.player != null) aim(mc);
         if (landing && pendingName == null) landingStep(mc);
     }
 
@@ -82,19 +84,18 @@ final class PlanetAutoTest {
     /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
         if (target == null) {
+            var search = new dev.gohst136.planetary.terrain.ProceduralTerrain(PlanetClient.PLANET);
             double bestErr = 1e18, bestH = 0; Vec3 bestDir = new Vec3(1, 0, 0);
             int n = 100_000;
             for (int i = 0; i < n; i++) {
                 double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
                 if (d.x() * PlanetClient.SUN[0] + d.y() * PlanetClient.SUN[1] + d.z() * PlanetClient.SUN[2] < 0.5) continue;   // day side only
-                double h = PlanetClient.TERRAIN.heightAt(d, 1e9);   // macro only: 100k vanilla samples would freeze the render thread
+                double h = search.heightAt(d);                       // macro only: 100k vanilla samples would freeze the render thread
                 if (Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
             }
             target = bestDir;
-            bestH = PlanetClient.TERRAIN.heightAt(bestDir);          // one full-detail sample for the true ground level
-            targetGround = PlanetClient.PLANET.radius() + bestH;
-            targetInfo = String.format("TARGET: dir=%s fullHeight=%.0f m (macro closest to 2000 m)", target, bestH);
+            targetInfo = String.format("TARGET: dir=%s macroHeight=%.0f m (closest to 2000 m, day side)", target, bestH);
             System.out.println("[planetary-autotest] " + targetInfo);
         }
         return target;
@@ -117,7 +118,8 @@ final class PlanetAutoTest {
     }
 
     static Vec3 scriptedPosition() {
-        double groundRadius = (targetDir() != null) ? targetGround : 0;
+        if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
+        double groundRadius = targetGround;
         if (transit) {
             // REAL time (clamped), so streaming gets exactly as long as in a genuine flight
             long now = System.nanoTime();
@@ -183,47 +185,59 @@ final class PlanetAutoTest {
         if (stopAfterCapture) mc.execute(mc::stop);
     }
 
+    private static final double[] BUBBLE_ALTS = {300, 100, 30, 8};
+    private static int bubbleStop, bubbleWait;
+    private static double bx, bz, by0;
+    private static float byaw, bpitch;
+
     /**
-     * Landing check: after the planet descent, put the real player at the corresponding vanilla position (via the
-     * plane unwrap), let the real chunks load, screenshot them, and compare the planet's vanilla-detail layer with
-     * the generator's true heights around the anchor.
+     * Bubble check: after the planet descent, bring the REAL player to the anchor (vanilla plane coordinates), switch on
+     * the bubble frame (planet as backdrop, real chunks in front) and screenshot at 300/100/30/8 m above the ground, to
+     * judge the seam between real chunks and the planet mesh. Also reports how far the detail layer is from the
+     * generator's true heights.
      */
     private static void landingStep(Minecraft mc) {
         landingTick++;
         if (landingTick == 5) {
-            PlanetClient.setActive(false);
             var d = targetDir();
             int face = dev.gohst136.planetary.planet.CubeSphere.faceOf(d);
             double half = PlanetClient.PLANET.radius() * Math.PI / 4.0;
-            var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, half, 0.0);   // band 0: primary face only
-            double x = m.x1(), z = m.z1();
-            double y = PlanetClient.vanilla.applyAsDouble(x, z) + 63.0 + 4.0;
+            var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, half, 0.0);
+            bx = m.x1(); bz = m.z1();
+            by0 = PlanetClient.vanilla.exactHeight(bx, bz) + 63.0;
             Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
             double w = Math.tan(Math.min(Math.toRadians(60), 0.6 * Math.PI / 2));
             double dx = tangent.dot(dev.gohst136.planetary.planet.CubeSphere.uAxis(face));
             double dz = -tangent.dot(dev.gohst136.planetary.planet.CubeSphere.vAxis(face));
-            float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz)), pitch = (float) Math.toDegrees(Math.atan(1.0 / w));
-            // fidelity of the detail layer against the generator's true column heights (8x8 grid, 8 m apart)
-            double err = 0, worst = 0; int n = 0;
+            byaw = (float) Math.toDegrees(Math.atan2(-dx, dz)); bpitch = (float) Math.toDegrees(Math.atan(1.0 / w));
+            double err = 0, signed = 0, worst = 0; int n = 0;
             for (int i = -4; i < 4; i++) for (int j = -4; j < 4; j++) {
-                double e = Math.abs(PlanetClient.vanilla.applyAsDouble(x + i * 8, z + j * 8) - PlanetClient.vanilla.exactHeight(x + i * 8, z + j * 8));
-                err += e; worst = Math.max(worst, e); n++;
+                double e = PlanetClient.vanilla.applyAsDouble(bx + i * 8, bz + j * 8) - PlanetClient.vanilla.exactHeight(bx + i * 8, bz + j * 8);
+                err += Math.abs(e); signed += e; worst = Math.max(worst, Math.abs(e)); n++;
             }
-            String line = String.format("LANDING: face=%d plane=(%.0f,%.0f) vanillaY=%.1f yaw=%.0f pitch=%.0f | detail-layer vs generator height: mean |err|=%.2f m worst=%.1f m (n=%d)", face, x, z, y, yaw, pitch, err / n, worst, n);
+            String line = String.format("BUBBLE: face=%d plane=(%.0f,%.0f) groundY=%.1f | detail-layer vs generator height: mean |err|=%.2f m, signed mean=%.2f m, worst=%.1f m (n=%d)", face, bx, bz, by0, err / n, signed / n, worst, n);
             System.out.println("[planetary-autotest] " + line);
             try { log = new FileWriter(new File(outDir, "stats.txt"), true); log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
-            var server = mc.getSingleplayerServer();
-            final double fx = x, fy = y, fz = z; final float fyaw = yaw, fpitch = pitch;
-            server.execute(() -> {
-                var sp = server.getPlayerList().getPlayers().get(0);
-                sp.teleportTo(sp.serverLevel(), fx, fy, fz, fyaw, fpitch);
-                sp.getAbilities().flying = true;
-                sp.onUpdateAbilities();
-            });
-        } else if (landingTick == 5 + 400) {          // ~20 s at 20 tps: chunks around the anchor are in
-            stopAfterCapture = true;
-            pendingName = "landing_vanilla.png";
-            landing = false;
+            PlanetClient.bubble = PlanetClient.makeBubble();
+            teleport(mc, BUBBLE_ALTS[0]);
+            bubbleWait = 400;                                     // ~20 s: first chunks around the anchor
+        } else if (landingTick > 5 && --bubbleWait <= 0) {
+            String name = String.format("bubble_%03.0fm.png", BUBBLE_ALTS[bubbleStop]);
+            pendingName = name;
+            bubbleStop++;
+            if (bubbleStop >= BUBBLE_ALTS.length) { stopAfterCapture = true; landing = false; }
+            else { teleport(mc, BUBBLE_ALTS[bubbleStop]); bubbleWait = 100; }
         }
+    }
+
+    private static void teleport(Minecraft mc, double alt) {
+        var server = mc.getSingleplayerServer();
+        final double fx = bx, fy = by0 + alt, fz = bz; final float fyaw = byaw, fpitch = bpitch;
+        server.execute(() -> {
+            var sp = server.getPlayerList().getPlayers().get(0);
+            sp.teleportTo(sp.serverLevel(), fx, fy, fz, fyaw, fpitch);
+            sp.getAbilities().flying = true;
+            sp.onUpdateAbilities();
+        });
     }
 }
