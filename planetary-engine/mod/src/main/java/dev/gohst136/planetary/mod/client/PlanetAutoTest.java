@@ -82,10 +82,12 @@ final class PlanetAutoTest {
             for (int i = 0; i < n; i++) {
                 double y = 1 - 0.005 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;   // cap within ~5.7 deg of the pole: world-up ~ local up, so the horizon is level
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
-                double h = PlanetClient.TERRAIN.heightAt(d);
+                double h = PlanetClient.TERRAIN.heightAt(d, 1e9);   // macro only: 100k vanilla samples would freeze the render thread
                 if (Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
             }
-            target = bestDir; targetGround = PlanetClient.PLANET.radius() + bestH;
+            target = bestDir;
+            bestH = PlanetClient.TERRAIN.heightAt(bestDir);          // one full-detail sample for the true ground level
+            targetGround = PlanetClient.PLANET.radius() + bestH;
             System.out.printf("[planetary-autotest] target height=%.0f m dir=%s%n", bestH, target);
         }
         return target;
@@ -135,6 +137,7 @@ final class PlanetAutoTest {
             tMaxFallback = Math.max(tMaxFallback, fb); tMaxHoles = Math.max(tMaxHoles, ho);
             tMerges += r.merges;
             if (alt <= STOPS[STOPS.length - 1] && tFrames > 30) {
+                try { log.write("TERRAIN: " + PlanetClient.terrainStats() + "\n"); } catch (IOException ignored) {}
                 String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f",
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);

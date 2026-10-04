@@ -32,4 +32,30 @@ public final class CubeSphere {
         double n = (double) (1L << level);
         return direction(face, -1.0 + 2.0 * (x + fx) / n, -1.0 + 2.0 * (y + fy) / n);
     }
+
+    /** Face whose normal axis has the largest |component| of {@code d}. */
+    public static int faceOf(Vec3 d) {
+        double ax = Math.abs(d.x()), ay = Math.abs(d.y()), az = Math.abs(d.z());
+        if (ax >= ay && ax >= az) return d.x() >= 0 ? 0 : 1;
+        if (ay >= az) return d.y() >= 0 ? 2 : 3;
+        return d.z() >= 0 ? 4 : 5;
+    }
+
+    /** Face whose normal axis has the second largest |component| (the neighbour across the nearest edge). */
+    public static int secondFaceOf(Vec3 d) {
+        int first = faceOf(d);
+        double[] a = {Math.abs(d.x()), Math.abs(d.y()), Math.abs(d.z())};
+        a[first / 2] = -1;
+        int axis = a[0] >= a[1] && a[0] >= a[2] ? 0 : (a[1] >= a[2] ? 1 : 2);
+        double c = axis == 0 ? d.x() : axis == 1 ? d.y() : d.z();
+        return axis * 2 + (c >= 0 ? 0 : 1);
+    }
+
+    /** Inverse of {@link #direction}: face-local (u,v) in [-1,1] for a direction on the given face's hemisphere. */
+    public static double[] faceUV(int face, Vec3 d) {
+        double n = d.dot(NORMAL[face]);
+        double u = Math.atan(d.dot(U_AXIS[face]) / n) * 4.0 / Math.PI;
+        double v = Math.atan(d.dot(V_AXIS[face]) / n) * 4.0 / Math.PI;
+        return new double[]{u, v};
+    }
 }

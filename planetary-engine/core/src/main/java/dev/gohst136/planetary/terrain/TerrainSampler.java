@@ -12,6 +12,12 @@ public interface TerrainSampler {
     double heightAt(Vec3 unitDir);
 
     /**
+     * Height as seen by a mesh with the given cell size. Samplers whose fine detail is unresolvable (or
+     * expensive) at coarse LODs may omit it here. Default: full-detail height.
+     */
+    default double heightAt(Vec3 unitDir, double cellSizeMeters) { return heightAt(unitDir); }
+
+    /**
      * Upper bound of height detail (metres) that a mesh with the given cell size cannot
      * represent. Drives screen-space error: it is 0 once the mesh resolves all octaves.
      */

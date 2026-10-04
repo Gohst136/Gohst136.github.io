@@ -19,12 +19,13 @@ public final class PatchMeshBuilder {
         if (n < 2 || (n & 1) != 0) throw new IllegalArgumentException("gridCells must be even and >= 2");
         int w = n + 1;
         Vec3[] pos = new Vec3[w * w];
+        final double cell = planet.radius() * (Math.PI / 2.0) / (double) (1L << k.level()) / n;
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             Vec3 d = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n);
-            pos[j * w + i] = d.mul(planet.radius() + terrain.heightAt(d));
+            pos[j * w + i] = d.mul(planet.radius() + terrain.heightAt(d, cell));
         }
         Vec3 centerDir = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), 0.5, 0.5);
-        Vec3 o = centerDir.mul(planet.radius() + terrain.heightAt(centerDir));
+        Vec3 o = centerDir.mul(planet.radius() + terrain.heightAt(centerDir, cell));
 
         // skirt drop: proportional to cell size so it hides LOD cracks but stays tiny on screen
         double edge = planet.radius() * (Math.PI / 2.0) / (double) (1L << k.level());

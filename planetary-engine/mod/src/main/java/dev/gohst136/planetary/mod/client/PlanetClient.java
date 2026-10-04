@@ -7,7 +7,9 @@ import dev.gohst136.planetary.math.Vec3;
 import dev.gohst136.planetary.mesh.PatchMeshBuilder;
 import dev.gohst136.planetary.planet.PlanetDefinition;
 import dev.gohst136.planetary.telemetry.FrameStats;
+import dev.gohst136.planetary.terrain.HybridTerrain;
 import dev.gohst136.planetary.terrain.ProceduralTerrain;
+import dev.gohst136.planetary.terrain.TerrainSampler;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.Input;
@@ -40,8 +42,10 @@ public final class PlanetClient {
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
-    static final PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
-    static final ProceduralTerrain TERRAIN = new ProceduralTerrain(PLANET);
+    static PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
+    static TerrainSampler TERRAIN = new ProceduralTerrain(PLANET);
+    static VanillaHeights vanilla;
+    static String terrainMode = "procedural";
 
     static boolean active;
     static Vec3 pos = Vec3.ZERO;
@@ -81,12 +85,28 @@ public final class PlanetClient {
                 mc.player.setXRot(0f);
                 lastNanos = System.nanoTime();
                 if (selector == null) {
+                    chooseTerrain(mc);
                     selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
                     renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN), PLANET);
                 }
             }
         }
     }
+
+    /** Singleplayer: macro planet shape + real vanilla worldgen detail. Otherwise: pure procedural fallback. */
+    private static void chooseTerrain(Minecraft mc) {
+        var server = mc.getSingleplayerServer();
+        if (server != null && !Boolean.getBoolean("planetary.noVanilla")) {
+            PLANET = PlanetDefinition.earthlikeVanilla(server.overworld().getSeed());
+            vanilla = new VanillaHeights(server.overworld());
+            TERRAIN = new HybridTerrain(PLANET, new ProceduralTerrain(PLANET), vanilla, 1500, 4000, 60, 0.06);
+            terrainMode = "hybrid (procedural macro + vanilla worldgen detail, seed " + PLANET.seed() + ")";
+        } else {
+            terrainMode = "procedural";
+        }
+    }
+
+    static String terrainStats() { return terrainMode + (vanilla != null ? " | " + vanilla.stats() : ""); }
 
     @SubscribeEvent
     public static void input(MovementInputUpdateEvent e) {

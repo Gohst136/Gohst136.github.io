@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private static final int GRID = 32;
+    private static final int WORKERS = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors() / 2));
     private static final long VRAM_BUDGET_BYTES = 192L << 20;
     private static final int MAX_UPLOADS_PER_FRAME = 6;
     private static final int MAX_REQUESTS_PER_FRAME = 64;
@@ -68,7 +69,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet) {
         this.builder = builder;
         this.planet = planet;
-        this.workers = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
+        this.workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
                 r -> { Thread t = new Thread(r, "planetary-mesh-" + workerId.incrementAndGet()); t.setDaemon(true); return t; },
                 (r, ex) -> { /* dropped: key stays absent from inFlight so it is re-requested next frame */ });
     }

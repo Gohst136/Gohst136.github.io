@@ -22,6 +22,12 @@ public record PlanetDefinition(
                 8_800.0, 4_000.0, 86_400.0, 100_000.0, 22);
     }
 
+    /** Macro shape from 11 noise octaves (>= ~4 km wavelength); finer detail comes from a vanilla-worldgen layer. */
+    public static PlanetDefinition earthlikeVanilla(long seed) {
+        return new PlanetDefinition("planetary:earthlike_vanilla", seed, 6_371_000.0, 9.81, 0.0,
+                9_100.0, 4_200.0, 86_400.0, 100_000.0, 11);
+    }
+
     public double minRadius() { return radius - maxDepth; }
     public double maxRadius() { return radius + maxHeight; }
 }
