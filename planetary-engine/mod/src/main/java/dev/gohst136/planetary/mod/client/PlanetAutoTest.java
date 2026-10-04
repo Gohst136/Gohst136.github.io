@@ -39,6 +39,10 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished, stopAfterCapture, landing;
+    // watchdog: if the benchmark stops making progress, dump every thread's stack to hang.txt and exit, so results always arrive
+    private static volatile long lastFrameNanos, lastStageNanos;
+    private static volatile String stageName = "start";
+    private static boolean watchdogStarted;
     // orbit tour: eight views of the whole planet from 9,000 km (continents, oceans, ice caps, both poles)
     private static boolean orbit;
     private static int orbitIdx, orbitHold;
@@ -59,6 +63,35 @@ final class PlanetAutoTest {
     private static double targetGround;
 
     private PlanetAutoTest() {}
+
+    private static void stage(String name) { stageName = name; lastStageNanos = System.nanoTime(); }
+
+    private static void startWatchdog() {
+        if (watchdogStarted) return;
+        watchdogStarted = true;
+        lastFrameNanos = lastStageNanos = System.nanoTime();
+        Thread t = new Thread(() -> {
+            while (true) {
+                try { Thread.sleep(5000); } catch (InterruptedException e) { return; }
+                long now = System.nanoTime();
+                boolean noFrames = now - lastFrameNanos > 30_000_000_000L;
+                boolean noStage = now - lastStageNanos > 120_000_000_000L;
+                if (!noFrames && !noStage) continue;
+                try (FileWriter w = new FileWriter(new File(outDir, "hang.txt"))) {
+                    w.write("WATCHDOG: " + (noFrames ? "no render frames for 30 s" : "no stage progress for 120 s")
+                            + "\nstage=" + stageName + " alt=" + alt + " stop=" + stop + " hold=" + hold + " orbitIdx=" + orbitIdx
+                            + " transit=" + transit + "\n\n");
+                    for (var e : Thread.getAllStackTraces().entrySet()) {
+                        w.write("--- " + e.getKey().getName() + " (" + e.getKey().getState() + ")\n");
+                        for (var el : e.getValue()) w.write("    at " + el + "\n");
+                    }
+                } catch (IOException ignored) {}
+                System.exit(3);
+            }
+        }, "planetary-watchdog");
+        t.setDaemon(true);
+        t.start();
+    }
 
     static boolean enabled() { return ENABLED && PlanetClient.active; }
 
@@ -81,6 +114,7 @@ final class PlanetAutoTest {
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.preparePlanet(mc);
             if (PlanetClient.vanilla != null) PlanetClient.anchor = targetDir();   // vanilla path: terrain is flattened around the landing site
+            startWatchdog();
             PlanetClient.setActive(true);
         }
         if (PlanetClient.active && !PlanetClient.bubbleLive && mc.player != null) aim(mc);
@@ -157,9 +191,11 @@ final class PlanetAutoTest {
 
     static void afterFrame(QuadtreeSelector.Result r, GlPlanetRenderer renderer, FrameStats fs, double selectMs) {
         if (!enabled()) return;
+        lastFrameNanos = System.nanoTime();
         if (transit) {
             if (clearPending) { renderer.clearCache(); clearPending = false; }   // after the last screenshot was taken: cold cache (pinned coarse levels stay)
             tFrames++;
+            if (tFrames % 200 == 0) stage("transit frame " + tFrames + " alt=" + (long) alt);
             tStats.record(fs.median() > 0 ? lastFrameMs(fs) : 0);
             int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
             if (fb > 0) tFallbackFrames++;
@@ -179,7 +215,7 @@ final class PlanetAutoTest {
         if (orbit) {
             if (++orbitHold < 40 || (!renderer.settled() && orbitHold < 600)) return;
             pendingName = String.format("orbit_%d.png", orbitIdx);
-            orbitIdx++; orbitHold = 0;
+            orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
             if (orbitIdx >= ORBIT_DIRS.length) { orbit = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; }
             return;
         }
@@ -197,7 +233,7 @@ final class PlanetAutoTest {
                 fs.average(), fs.p95(), fs.p99(), fs.worst(), renderer.stats());
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
-        stop++; hold = 0;
+        stop++; hold = 0; stage("stop " + stop);
         if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = 0; }
     }
 

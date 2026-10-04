@@ -50,6 +50,7 @@ public final class PlanetClient {
     /** Unit vector towards the sun in the planet frame. */
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean active;
+    private static net.minecraft.client.CloudStatus savedClouds = net.minecraft.client.CloudStatus.FANCY;
     /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
     static Vec3 anchor;
     static BubbleFrame bubble;                 // frame exists once the real player has been parked at the anchor
@@ -88,7 +89,9 @@ public final class PlanetClient {
 
     static void setActive(boolean on) {
         Minecraft mc = Minecraft.getInstance();
+        if (on && !active) savedClouds = mc.options.cloudStatus().get();     // vanilla clouds do not belong in planet mode
         active = on;
+        try { mc.options.cloudStatus().set(on ? net.minecraft.client.CloudStatus.OFF : savedClouds); } catch (RuntimeException ignored) {}
         {
             if (active) {
                 pos = new Vec3(PLANET.radius() + 20_000_000.0, 0, 0);       // 20,000 km above the surface
