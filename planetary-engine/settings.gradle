@@ -1,0 +1,4 @@
+rootProject.name = 'planetary-engine'
+include 'core'
+// The NeoForge glue module needs maven.neoforged.net; enable with -PwithMod=true
+if (providers.gradleProperty('withMod').isPresent()) include 'mod'

@@ -1,0 +1,4 @@
+subprojects {
+    group = 'dev.gohst136.planetary'
+    version = '0.1.0'
+}
