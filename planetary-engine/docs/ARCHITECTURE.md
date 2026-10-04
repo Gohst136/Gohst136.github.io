@@ -10,7 +10,7 @@
 ## 1. Module split
 | Module | Depends on | Contents | Status |
 |---|---|---|---|
-| `core` | JDK only | coords, cube-sphere, terrain sampler, quadtree SSE selector, mesh builder, telemetry, `RenderBackend` interface | built + 10 tests passing |
+| `core` | JDK only | coords, cube-sphere, terrain sampler, quadtree SSE selector, mesh builder, telemetry, `RenderBackend` interface | built + 13 tests passing |
 | `mod`  | NeoForge 1.21.1, `core` | entry point; later: GL backend, render hooks, networking, commands | scaffold only, uncompiled |
 
 Pure Java (headless-testable): coordinates, floating origin, planet data, terrain/worldgen sampling, LOD selection,
@@ -46,9 +46,9 @@ max 45 patches (straight-down view), 0 merges (no flicker), selection ≈0.1 ms 
 These counts say the *selection* is cheap; they say nothing about GPU cost, streaming, or visual quality.
 
 ## 5. Known gaps / risks (ordered)
-1. **Patch bounds are heuristic** (sampled min/max + margin). A mountain between samples can poke outside → wrong culling/LOD. Fix: hierarchical conservative min/max (Phase 3).
+1. ~~Patch bounds heuristic~~ → now sampled min/max widened by a Lipschitz bound (`TerrainSampler.slopeBound()`), checked by randomized tests. The bound is only as correct as each sampler's implementation; a vanilla-worldgen sampler will need its own bound.
 2. **Low patch counts partly reflect smooth terrain**: real vanilla-like terrain has far more high-frequency energy; error model must be calibrated against real worldgen.
-3. **LOD cracks**: only skirts + geomorph data exist; no 2:1 neighbour constraint, no shader yet.
+3. **LOD cracks**: skirts + per-patch geomorph weight (`SelectedPatch.morphToParent`) exist; no 2:1 neighbour constraint, no shader yet.
 4. **Float vertex precision** is fine patch-relative; per-patch double camera offsets must be done by the backend.
 5. **Vanilla bubble ↔ sphere**: flat chunk grid vs. curved surface — the hardest visual problem (Phase 6). Needs a curvature warp that stays crack-free.
 6. **Vanilla worldgen sampling** cost/determinism (noise router, biome source) at coarse levels is unexplored.
@@ -56,11 +56,12 @@ These counts say the *selection* is cheap; they say nothing about GPU cost, stre
 8. Mod module uncompiled; NeoForge/ModDevGradle versions (`21.1.172`, `2.0.78`) are unverified guesses.
 
 ## 6. Phase 1 → 2 task list
+0. **Blocked on environment**: allow `maven.neoforged.net`, `libraries.minecraft.net`, `piston-meta.mojang.com` in the cloud environment's network policy (or build locally).
 1. Compile `:mod` where NeoForge maven is reachable; pin real versions.
 2. GL backend: upload `PatchMesh`, draw with per-patch double→float camera offset (hook `RenderLevelStageEvent`).
 3. Geomorph vertex shader fed by morph factor from the same SSE; atmosphere-less planet shading (Phase 2).
 4. Debug overlay: patch bounds/levels/SSE, `FrameStats`, floating-origin state.
 5. Worker pool + bounded queues for mesh jobs; upload budget per frame.
-6. Replace heuristic bounds; add neighbour-level constraint.
+6. Add neighbour-level (2:1) constraint across faces. (Bounds done.)
 
 Run tests: `cd planetary-engine && gradle :core:test`

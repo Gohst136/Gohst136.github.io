@@ -57,6 +57,30 @@ public final class ProceduralTerrain implements TerrainSampler {
         return err * ampNorm * planet.maxHeight() * 0.65 * 2.5;
     }
 
+    /**
+     * Gradient bound of value noise in R^3: trilinear blend with quintic fade has
+     * |d/dx| <= 2 * 1.875 per axis (corner values in [-1,1]), so |grad| <= 3.75 * sqrt(3).
+     * h = c + land^2 * r with c,land bounded gradients; product rule gives the terms below.
+     */
+    @Override
+    public double slopeBound() {
+        final double g = 3.75 * Math.sqrt(3.0);
+        double gc = 0, gr = 0, rMax = 0, amp = 1, f = BASE_FREQ;
+        for (int i = 0; i < octaves; i++) {
+            double gi = amp * f * g;
+            if (i < 3) gc += gi; else { gr += 2.0 * gi; rMax += 2.0 * amp; }   // ridged term spans [-amp,amp]: gradient doubles
+            amp *= PERSISTENCE;
+            f *= 2.0;
+        }
+        double cScale = ampNorm * 2.2;                // c = clamp(continent * cScale, -1, 1)
+        double gC = gc * cScale;                      // |grad c| (clamp only lowers it)
+        double rBound = rMax * ampNorm * 2.5;         // |ridged term| scaled (before maxHeight*0.65)
+        double mtn = planet.maxHeight() * 0.65;
+        double gMountain = mtn * (2.0 * 1.0 * gC * rBound + 1.0 * gr * ampNorm * 2.5);   // land<=1
+        double gBase = Math.max(planet.maxHeight() * 0.35, planet.maxDepth()) * gC;
+        return gBase + gMountain;
+    }
+
     // ---- value noise -------------------------------------------------------------------
     private static double noise(double x, double y, double z, long s) {
         long xi = (long) Math.floor(x), yi = (long) Math.floor(y), zi = (long) Math.floor(z);

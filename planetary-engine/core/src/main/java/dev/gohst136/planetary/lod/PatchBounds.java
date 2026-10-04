@@ -9,9 +9,9 @@ import dev.gohst136.planetary.terrain.TerrainSampler;
  * Bounds of a patch: a bounding sphere (covers terrain from minRadius to maxRadius)
  * and the angular radius of the patch as seen from the planet centre (for horizon culling).
  *
- * Height range is estimated per patch from a 9x9 terrain sample plus a margin (unresolved detail at
- * the sample spacing + 25% of the sampled range). This is a heuristic, not a proven bound; Phase 3
- * replaces it with precomputed hierarchical min/max (child bounds nested in parent bounds).
+ * Height range comes from a 9x9 terrain sample widened by the sampler's Lipschitz bound times the
+ * largest possible distance from any patch point to its nearest sample, so the range is a proven
+ * bound for any sampler with a correct {@link TerrainSampler#slopeBound()} (see PatchBoundsTest).
  */
 public record PatchBounds(Vec3 center, double radius, Vec3 centerDir, double angularRadius, double edgeMeters) {
 
@@ -25,7 +25,10 @@ public record PatchBounds(Vec3 center, double radius, Vec3 centerDir, double ang
             double h = terrain.heightAt(CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n));
             lo = Math.min(lo, h); hi = Math.max(hi, h);
         }
-        double margin = terrain.unresolvedDetail(edge / n) + 0.25 * (hi - lo);
+        // worst-case chord distance to nearest sample: half the cell diagonal, with 1.5x slack for
+        // the equal-angle warp and chord-vs-arc differences
+        double sampleSpacing = 1.5 * (Math.PI / 2.0) / (double) (1L << k.level()) / n;
+        double margin = terrain.slopeBound() * sampleSpacing * Math.sqrt(0.5);
         double rLo = Math.max(p.minRadius(), p.radius() + lo - margin), rHi = Math.min(p.maxRadius(), p.radius() + hi + margin);
         Vec3 c0 = dir.mul((rLo + rHi) * 0.5);
         c = c0;

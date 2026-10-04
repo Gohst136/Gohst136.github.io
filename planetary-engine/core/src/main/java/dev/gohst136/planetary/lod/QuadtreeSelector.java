@@ -24,13 +24,16 @@ import java.util.Set;
  */
 public final class QuadtreeSelector {
 
+    /** A selected patch plus its geomorph weight toward the parent grid in [0,1] (1 = parent shape). */
+    public record SelectedPatch(PatchKey key, float morphToParent) {}
+
     public record Params(double thresholdPixels, double hysteresis, int maxLevel, int gridCells,
                          int patchBudget, double velocityDwellSeconds, double maxVelocityRelax) {
         public static Params defaults() { return new Params(0.75, 0.6, 22, 32, 6000, 0.05, 4.0); }
     }
 
     public static final class Result {
-        public final List<PatchKey> patches = new ArrayList<>();
+        public final List<SelectedPatch> patches = new ArrayList<>();
         public int culledHorizon, culledFrustum, maxLevel;
         public double effectiveThreshold;
         /** Nodes that were split last frame and are merged this frame (pop-in risk metric). */
@@ -97,7 +100,9 @@ public final class QuadtreeSelector {
             c.splitNow.add(k);
             for (PatchKey child : k.children()) visit(child, c);
         } else {
-            c.res.patches.add(k);
+            // geomorph weight toward the parent grid: 1 right after a split (child px ~ T/2), 0 at px >= T
+            double w = k.level() == 0 ? 0 : 1.0 - Math.max(0, Math.min(1, (px / (params.thresholdPixels() * relax * loadScale) - 0.5) / 0.5));
+            c.res.patches.add(new SelectedPatch(k, (float) w));
             c.res.maxLevel = Math.max(c.res.maxLevel, k.level());
         }
     }

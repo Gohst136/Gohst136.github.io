@@ -16,4 +16,10 @@ public interface TerrainSampler {
      * represent. Drives screen-space error: it is 0 once the mesh resolves all octaves.
      */
     double unresolvedDetail(double cellSizeMeters);
+
+    /**
+     * Provable upper bound of |dh| per unit of chord length on the unit sphere (metres per unit-sphere
+     * distance). Lets bounds be derived rigorously: |h(x) - h(s)| <= slopeBound() * |x - s|.
+     */
+    double slopeBound();
 }

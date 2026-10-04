@@ -1,6 +1,7 @@
 package dev.gohst136.planetary.render;
 
 import dev.gohst136.planetary.lod.PatchKey;
+import dev.gohst136.planetary.lod.QuadtreeSelector.SelectedPatch;
 import dev.gohst136.planetary.mesh.PatchMesh;
 
 import java.util.List;
@@ -15,5 +16,5 @@ public interface RenderBackend {
     void upload(PatchKey key, PatchMesh mesh);
     void evict(PatchKey key);
     /** Draw the selected set; per-patch camera-relative offsets are computed in double by the caller. */
-    void draw(List<PatchKey> selected, double[] cameraPositionPlanetFrame);
+    void draw(List<SelectedPatch> selected, double[] cameraPositionPlanetFrame);
 }
