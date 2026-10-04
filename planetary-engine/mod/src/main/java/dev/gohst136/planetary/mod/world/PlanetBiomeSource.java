@@ -50,10 +50,29 @@ public final class PlanetBiomeSource extends BiomeSource {
 
     @Override protected Stream<Holder<Biome>> collectPossibleBiomes() { return biomes.values().stream(); }
 
+    /**
+     * Vanilla asks for every height quart of a column (1536 / 4 = 384 calls per (x, z)), but the planet's biome depends on
+     * (x, z) only: a small per-thread cache turns ~6000 climate evaluations per chunk into 16.
+     */
+    private static final class ColumnCache extends java.util.LinkedHashMap<Long, ResourceKey<Biome>> {
+        ColumnCache() { super(512, 0.75f, true); }
+        @Override protected boolean removeEldestEntry(Map.Entry<Long, ResourceKey<Biome>> e) { return size() > 2048; }
+    }
+    private final ThreadLocal<ColumnCache> cache = ThreadLocal.withInitial(ColumnCache::new);
+    static final java.util.concurrent.atomic.AtomicLong COLUMN_EVALS = new java.util.concurrent.atomic.AtomicLong();
+
     @Override
     public Holder<Biome> getNoiseBiome(int qx, int qy, int qz, Climate.Sampler sampler) {
-        Vec3 d = PlaneUnwrap.inverse(qx * 4 + 2, qz * 4 + 2, half);
-        return biomes.get(pick(terrain.surface(d, 4.0)));
+        long key = ((long) qx << 32) ^ (qz & 0xffffffffL);
+        ColumnCache c = cache.get();
+        ResourceKey<Biome> k = c.get(key);
+        if (k == null) {
+            Vec3 d = PlaneUnwrap.inverse(qx * 4 + 2, qz * 4 + 2, half);
+            k = pick(terrain.surface(d, 4.0));
+            c.put(key, k);
+            COLUMN_EVALS.incrementAndGet();
+        }
+        return biomes.get(k);
     }
 
     static ResourceKey<Biome> pick(RealisticTerrain.Surface s) {

@@ -219,7 +219,7 @@ final class PlanetAutoTest {
             tMaxFallback = Math.max(tMaxFallback, fb); tMaxHoles = Math.max(tMaxHoles, ho);
             tMerges += r.merges;
             if (alt <= STOPS[STOPS.length - 1] && tFrames > 30) {
-                try { log.write("TERRAIN: " + PlanetClient.terrainStats() + "\n" + targetInfo + "\n"); } catch (IOException ignored) {}
+                try { log.write("TERRAIN: " + PlanetClient.terrainStats() + "\n" + targetInfo + "\nWORLDGEN: " + dev.gohst136.planetary.mod.world.PlanetChunkGenerator.stats() + "\n"); } catch (IOException ignored) {}
                 String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | " + renderer.latencySummary(),
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);

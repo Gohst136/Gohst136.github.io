@@ -46,6 +46,14 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
             Codec.LONG.optionalFieldOf("seed", PlanetWorld.DEFAULT_SEED).forGetter(g -> g.seed)
     ).apply(i, i.stable(PlanetChunkGenerator::new)));
 
+    /** Telemetry: chunks filled and total nanoseconds spent in fillFromNoise (all threads). */
+    public static final java.util.concurrent.atomic.AtomicLong CHUNKS = new java.util.concurrent.atomic.AtomicLong(), CHUNK_NANOS = new java.util.concurrent.atomic.AtomicLong();
+
+    public static String stats() {
+        long n = CHUNKS.get();
+        return "chunks filled=" + n + " avg=" + (n == 0 ? 0 : CHUNK_NANOS.get() / n / 1_000_000) + " ms/chunk, biome column evals=" + PlanetBiomeSource.COLUMN_EVALS.get();
+    }
+
     public final long seed;
     private final RealisticTerrain terrain;
     private final double half;
@@ -74,6 +82,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
 
     @Override
     public CompletableFuture<ChunkAccess> fillFromNoise(Blender blender, RandomState random, StructureManager structures, ChunkAccess chunk) {
+        long t0 = System.nanoTime();
         Heightmap oceanFloor = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG);
         Heightmap surface = chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG);
         int minX = chunk.getPos().getMinBlockX(), minZ = chunk.getPos().getMinBlockZ();
@@ -98,6 +107,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
                 }
             }
         }
+        CHUNKS.incrementAndGet(); CHUNK_NANOS.addAndGet(System.nanoTime() - t0);
         return CompletableFuture.completedFuture(chunk);
     }
 
