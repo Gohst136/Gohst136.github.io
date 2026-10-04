@@ -163,7 +163,7 @@ final class PlanetAutoTest {
 
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
-        if (orbit) {
+        if (orbit && orbitHold >= 0) {
             Vec3 l = ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(-1);
             mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
             mc.player.setYRot((float) Math.toDegrees(Math.atan2(-l.x(), l.z())));
@@ -179,7 +179,7 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
         double groundRadius = targetGround;
-        if (orbit) return ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(PlanetClient.PLANET.radius() + ORBIT_ALT);
+        if (orbit && orbitHold >= 0) return ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(PlanetClient.PLANET.radius() + ORBIT_ALT);
         if (transit) {
             // REAL time (clamped), so streaming gets exactly as long as in a genuine flight
             long now = System.nanoTime();
@@ -240,7 +240,7 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0; stage("stop " + stop);
-        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = 0; }
+        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }
@@ -297,18 +297,20 @@ final class PlanetAutoTest {
         if (!PlanetClient.realWorld || mc.level == null || frame == null || !PlanetClient.bubbleLive) return "FIDELITY n/a (real-world bubble not live)";
         double half = dev.gohst136.planetary.mod.world.PlanetWorld.halfSpan(PlanetClient.PLANET.seed());
         java.util.List<Double> diffs = new java.util.ArrayList<>();
-        int exact = 0, n = 0;
+        int exact = 0, n = 0, unloaded = 0;
         for (int i = -6; i < 6; i++) for (int j = -6; j < 6; j++) {
             int x = (int) Math.floor(frame.x0 + i * 10), z = (int) Math.floor(frame.z0 + j * 10);
             int real = mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z);
+            if (real <= mc.level.getMinBuildHeight() + 1) { unloaded++; continue; }                 // no chunk data on the client here
             Vec3 dir = dev.gohst136.planetary.planet.PlaneUnwrap.inverse(x + 0.5, z + 0.5, half);
             double expected = Math.floor(dev.gohst136.planetary.planet.VerticalMap.toBlockY(PlanetClient.TERRAIN.heightAt(dir, 1.0))) + 1;
             diffs.add(Math.abs(real - expected)); n++;
             if (Math.abs(real - expected) <= 1) exact++;
         }
+        if (diffs.isEmpty()) return "FIDELITY real chunks: NO chunk data on the client around the anchor (" + unloaded + " columns empty)";
         java.util.Collections.sort(diffs);
         double mean = diffs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-        return String.format("FIDELITY real chunks vs planet function (%d points @10 m): median |dY|=%.1f mean=%.2f max=%.0f within 1 block: %d%% (trees count as terrain)",
-                n, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
+        return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 1 block: %d%% (trees count as terrain)",
+                n, unloaded, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
     }
 }

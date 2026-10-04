@@ -7,6 +7,8 @@ for /f "tokens=1,* delims= " %%a in ('git log HEAD -30 "--format=%%H %%s"') do (
   echo %%b | findstr /b /c:"Autotest results" >nul || (if not defined CODE set CODE=%%a)
 )
 if exist mod\run\planetary-autotest rmdir /s /q mod\run\planetary-autotest
+rem a fresh test world every run: stale chunks of an older generator would be loaded otherwise
+if exist mod\run\saves\planetary_autotest rmdir /s /q mod\run\saves\planetary_autotest
 call gradlew.bat -PwithMod=true -Pautotest :mod:runClient
 if exist autotest-results rmdir /s /q autotest-results
 mkdir autotest-results
