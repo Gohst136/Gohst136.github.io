@@ -50,6 +50,7 @@ public final class PlanetClient {
     /** Unit vector towards the sun in the planet frame. */
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
+    static boolean suspended;                  // diagnostics: my render handler does nothing at all (pure vanilla frame)
     static boolean planetOff;                  // diagnostics: skip the planet draw (real world only)
     static boolean active;
     private static net.minecraft.client.CloudStatus savedClouds = net.minecraft.client.CloudStatus.FANCY;
@@ -257,7 +258,7 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent e) {
-        if (!active || selector == null) return;
+        if (!active || selector == null || suspended) return;
         // free flight owns the whole frame (AFTER_LEVEL); in the bubble the planet is the backdrop of the real world (AFTER_SKY)
         if (e.getStage() != (bubbleLive ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
         Minecraft mc = Minecraft.getInstance();
@@ -357,6 +358,7 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void overlay(RenderGuiEvent.Post e) {
+        if (suspended) { PlanetAutoTest.suspendedTick(); PlanetAutoTest.captureIfPending(); return; }
         if (!active) { PlanetAutoTest.captureIfPending(); return; }          // vanilla-mode screenshots (landing check)
         if (lastResult == null) return;
         Minecraft mc = Minecraft.getInstance();

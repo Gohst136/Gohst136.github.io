@@ -240,7 +240,9 @@ final class PlanetAutoTest {
             postFrames++;
             if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 2; postFrames = 0; }
             else if (post == 2) { PlanetClient.planetOff = true; Minecraft.getInstance().options.gamma().set(1.0); post = 3; postFrames = 0; }   // magenta backdrop + full brightness: if real blocks are drawn at all they must show
-            else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; stopAfterCapture = true; }
+            else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; postFrames = 0; }
+            else if (post == 4) { PlanetClient.suspended = true; post = 5; postFrames = 0; }
+
             return;
         }
         if (orbit) {
@@ -337,5 +339,11 @@ final class PlanetAutoTest {
         double mean = diffs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
         return String.format("FIDELITY real chunks vs planet function (%d points @10 m, %d empty): median |dY|=%.1f mean=%.2f max=%.0f within 3 blocks: %d%% (trees/features count as terrain)",
                 n, unloaded, diffs.get(n / 2), mean, diffs.get(n - 1), exact * 100 / n);
+    }
+
+    /** Called from the GUI overlay every frame while the render handler is suspended (pure vanilla frame). */
+    static void suspendedTick() {
+        if (post != 5 || pendingName != null) return;
+        if (++postFrames > 60) { pendingName = "bubble_vanilla_only.png"; post = 6; stopAfterCapture = true; }
     }
 }
