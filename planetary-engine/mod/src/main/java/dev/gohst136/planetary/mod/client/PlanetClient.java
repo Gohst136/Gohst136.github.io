@@ -57,6 +57,7 @@ public final class PlanetClient {
     /** Landing-site anchor (planet terrain is flattened around it) and, once landed, the vanilla<->planet bubble frame. */
     static Vec3 anchor;
     static BubbleFrame bubble;                 // frame exists once the real player has been parked at the anchor
+    static double bubbleGroundRadius;          // planet radius + terrain height at the anchor (metres from the planet centre)
     static boolean bubbleLive;                 // the camera is the real player's (handoff done)
     private static boolean preloaded;
     private static long frameCount, preloadFrame;
@@ -240,6 +241,7 @@ public final class PlanetClient {
 
     /** Builds the bubble frame at the anchor: planet ground there, real vanilla ground height there. */
     static BubbleFrame makeBubble() {
+        bubbleGroundRadius = PLANET.radius() + TERRAIN.heightAt(anchor);
         if (realWorld) return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius(), 0.0);   // block Y == metres above sea level (below Y 800)
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
         double y0 = vanilla.exactHeight(m.x1(), m.z1()) + 63.0;
@@ -300,7 +302,11 @@ public final class PlanetClient {
             fwd = bubble.direction(look.x(), look.y(), look.z());
             radial = pos.normalize();
             speed = 0;
-            if (pos.length() - bubble.groundRadius > 800.0) { bubbleLive = false; pendingTp = null; }   // flew back out of the bubble
+            // flew back out of the bubble: more than 800 m above the LOCAL ground (not above sea level: the landing site can lie on a
+            // plateau), or more than 3 km away from the anchor
+            double aboveGround = pos.length() - bubbleGroundRadius;
+            double away = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
+            if (aboveGround > 800.0 || away > 3000.0) { bubbleLive = false; pendingTp = null; preloaded = false; }
         }
 
         Matrix4f projIn = e.getProjectionMatrix();
