@@ -1,10 +1,10 @@
 GPU: NVIDIA GeForce RTX 2060/PCIe/SSE2 | GL 4.6.0 NVIDIA 610.88
-alt=20000000m patches=5 maxLevel=0 splits=0 merges=0 select=0,09ms frame avg=14,3 p95=100,0 p99=100,0 worst=100,0 [resident=5 vram=0MB/192MB, drawn=5 fallback=0 holes=0 inFlight=0 req/frame=0, built=5 uploaded=5]
-alt=2000000m patches=12 maxLevel=2 splits=0 merges=0 select=0,05ms frame avg=9,7 p95=14,5 p99=48,2 worst=100,0 [resident=15 vram=0MB/192MB, drawn=12 fallback=0 holes=0 inFlight=0 req/frame=0, built=15 uploaded=15]
-alt=200000m patches=19 maxLevel=6 splits=0 merges=0 select=0,04ms frame avg=9,1 p95=12,4 p99=22,2 worst=100,0 [resident=43 vram=2MB/192MB, drawn=19 fallback=0 holes=0 inFlight=0 req/frame=0, built=43 uploaded=43]
-alt=20000m patches=23 maxLevel=9 splits=0 merges=0 select=0,04ms frame avg=8,9 p95=11,8 p99=17,1 worst=100,0 [resident=62 vram=3MB/192MB, drawn=23 fallback=0 holes=0 inFlight=0 req/frame=0, built=62 uploaded=62]
-alt=2000m patches=29 maxLevel=12 splits=0 merges=0 select=0,06ms frame avg=8,4 p95=10,8 p99=12,2 worst=18,7 [resident=81 vram=4MB/192MB, drawn=29 fallback=0 holes=0 inFlight=0 req/frame=0, built=81 uploaded=81]
-alt=200m patches=41 maxLevel=16 splits=0 merges=0 select=0,05ms frame avg=8,4 p95=10,6 p99=11,9 worst=14,7 [resident=102 vram=6MB/192MB, drawn=41 fallback=0 holes=0 inFlight=0 req/frame=0, built=102 uploaded=102]
-alt=20m patches=48 maxLevel=19 splits=0 merges=0 select=0,06ms frame avg=8,4 p95=10,5 p99=10,8 worst=12,1 [resident=124 vram=7MB/192MB, drawn=48 fallback=0 holes=0 inFlight=0 req/frame=0, built=124 uploaded=124]
-alt=2m patches=47 maxLevel=19 splits=0 merges=0 select=0,06ms frame avg=8,4 p95=10,4 p99=10,8 worst=12,6 [resident=124 vram=7MB/192MB, drawn=47 fallback=0 holes=0 inFlight=0 req/frame=0, built=124 uploaded=124]
-TRANSIT (continuous, real time, v=alt/s, no holds): frames=1923 fallbackFrames=0 (max 0 patches) holeFrames=0 (max 0) merges=0 frame ms avg=8,4 p95=10,4 p99=10,6 worst=18,8
+alt=20000000m patches=5 maxLevel=0 splits=0 merges=0 select=0,06ms frame avg=14,1 p95=100,0 p99=100,0 worst=100,0 [resident=5 vram=0MB/192MB, drawn=5 fallback=0 holes=0 inFlight=0 req/frame=0, built=5 uploaded=5]
+alt=2000000m patches=12 maxLevel=2 splits=0 merges=0 select=0,04ms frame avg=9,5 p95=12,4 p99=32,4 worst=100,0 [resident=15 vram=0MB/192MB, drawn=12 fallback=0 holes=0 inFlight=0 req/frame=0, built=15 uploaded=15]
+alt=200000m patches=19 maxLevel=6 splits=0 merges=0 select=0,03ms frame avg=9,1 p95=12,0 p99=27,3 worst=100,0 [resident=43 vram=2MB/192MB, drawn=19 fallback=0 holes=0 inFlight=0 req/frame=0, built=43 uploaded=43]
+alt=20000m patches=23 maxLevel=9 splits=0 merges=0 select=0,04ms frame avg=8,9 p95=11,4 p99=14,9 worst=100,0 [resident=62 vram=3MB/192MB, drawn=23 fallback=0 holes=0 inFlight=0 req/frame=0, built=62 uploaded=62]
+alt=2000m patches=29 maxLevel=12 splits=0 merges=0 select=0,07ms frame avg=8,4 p95=10,8 p99=12,0 worst=15,8 [resident=81 vram=4MB/192MB, drawn=29 fallback=0 holes=0 inFlight=0 req/frame=0, built=81 uploaded=81]
+alt=200m patches=41 maxLevel=16 splits=0 merges=0 select=0,07ms frame avg=8,4 p95=10,6 p99=11,3 worst=13,7 [resident=102 vram=6MB/192MB, drawn=41 fallback=0 holes=0 inFlight=0 req/frame=0, built=102 uploaded=102]
+alt=20m patches=48 maxLevel=19 splits=0 merges=0 select=0,06ms frame avg=8,4 p95=10,5 p99=11,2 worst=15,0 [resident=124 vram=7MB/192MB, drawn=48 fallback=0 holes=0 inFlight=0 req/frame=0, built=124 uploaded=124]
+alt=2m patches=47 maxLevel=19 splits=0 merges=0 select=0,06ms frame avg=8,4 p95=10,4 p99=11,1 worst=15,0 [resident=124 vram=7MB/192MB, drawn=47 fallback=0 holes=0 inFlight=0 req/frame=0, built=124 uploaded=124]
+TRANSIT (continuous, real time, v=alt/s, no holds): frames=1919 fallbackFrames=0 (max 0 patches) holeFrames=0 (max 0) merges=0 frame ms avg=8,4 p95=10,4 p99=10,9 worst=17,1
