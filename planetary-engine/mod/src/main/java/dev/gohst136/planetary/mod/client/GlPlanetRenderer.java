@@ -7,6 +7,7 @@ import dev.gohst136.planetary.lod.PatchKey;
 import dev.gohst136.planetary.lod.QuadtreeSelector.SelectedPatch;
 import dev.gohst136.planetary.mesh.PatchMesh;
 import dev.gohst136.planetary.mesh.PatchMeshBuilder;
+import dev.gohst136.planetary.planet.PlanetDefinition;
 import dev.gohst136.planetary.render.RenderBackend;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
@@ -45,6 +46,10 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private record Built(PatchKey key, PatchMesh mesh) {}
 
     private final PatchMeshBuilder builder;
+    private final PlanetDefinition planet;
+    private int atmoProgram = -1, atmoVao;
+    private boolean atmoFailed;
+    private int aInvProj, aView, aUp, aSun, aR0, aH0, aR, aAtmH;
     private final Map<PatchKey, Gpu> resident = new HashMap<>();
     private final Set<PatchKey> inFlight = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Built> finished = new ConcurrentLinkedQueue<>();
@@ -60,8 +65,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final java.util.concurrent.atomic.AtomicLong meshesBuilt = new java.util.concurrent.atomic.AtomicLong();
     private long uploadsTotal;
 
-    GlPlanetRenderer(PatchMeshBuilder builder) {
+    GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet) {
         this.builder = builder;
+        this.planet = planet;
         this.workers = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(256),
                 r -> { Thread t = new Thread(r, "planetary-mesh-" + workerId.incrementAndGet()); t.setDaemon(true); return t; },
                 (r, ex) -> { /* dropped: key stays absent from inFlight so it is re-requested next frame */ });
@@ -189,6 +195,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             }
         }
         drawnLastFrame = toDraw.size();
+        drawAtmosphere(cam, view, proj, sun);
         GlStateManager._glBindVertexArray(0);
         GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         // vanilla caches the last-used program/VAO; reset its static state through a vanilla shader's clear()
@@ -197,6 +204,56 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         BufferUploader.invalidate();
         RenderSystem.enableCull();
         evictIfOverBudget();
+    }
+
+    /** Full-screen analytic atmosphere pass. A shader failure disables it (logged) instead of crashing the game. */
+    private void drawAtmosphere(double[] cam, Matrix4f view, Matrix4f proj, float[] sun) {
+        if (atmoFailed) return;
+        try {
+            if (atmoProgram < 0) {
+                atmoProgram = PlanetShaders.compileAtmosphere();
+                aInvProj = GlStateManager._glGetUniformLocation(atmoProgram, "uInvProj");
+                aView = GlStateManager._glGetUniformLocation(atmoProgram, "uView");
+                aUp = GlStateManager._glGetUniformLocation(atmoProgram, "uUp");
+                aSun = GlStateManager._glGetUniformLocation(atmoProgram, "uSun");
+                aR0 = GlStateManager._glGetUniformLocation(atmoProgram, "uR0");
+                aH0 = GlStateManager._glGetUniformLocation(atmoProgram, "uH0");
+                aR = GlStateManager._glGetUniformLocation(atmoProgram, "uR");
+                aAtmH = GlStateManager._glGetUniformLocation(atmoProgram, "uAtmH");
+                atmoVao = GlStateManager._glGenVertexArrays();
+            }
+        } catch (RuntimeException e) {
+            atmoFailed = true;
+            System.out.println("[planetary] atmosphere disabled: " + e.getMessage());
+            return;
+        }
+        double r0 = Math.sqrt(cam[0] * cam[0] + cam[1] * cam[1] + cam[2] * cam[2]);
+        Matrix4f inv = new Matrix4f(proj).invert();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        RenderSystem.enableBlend();
+        RenderSystem.blendFunc(1, 770);                       // GL_ONE, GL_SRC_ALPHA: inscatter + scene * transmittance
+        GlStateManager._glUseProgram(atmoProgram);
+        try (MemoryStack st = MemoryStack.stackPush()) {
+            FloatBuffer fb = st.mallocFloat(16);
+            GlStateManager._glUniformMatrix4(aInvProj, false, inv.get(fb));
+            GlStateManager._glUniformMatrix4(aView, false, view.get(fb));
+            FloatBuffer v3 = st.mallocFloat(3);
+            GlStateManager._glUniform3(aUp, v3.put((float) (cam[0] / r0)).put((float) (cam[1] / r0)).put((float) (cam[2] / r0)).flip());
+            v3.clear();
+            GlStateManager._glUniform3(aSun, v3.put(sun).flip());
+            GlStateManager._glUniform1(aR0, st.floats((float) r0));
+            GlStateManager._glUniform1(aH0, st.floats((float) (r0 - planet.radius())));
+            GlStateManager._glUniform1(aR, st.floats((float) planet.radius()));
+            GlStateManager._glUniform1(aAtmH, st.floats((float) planet.atmosphereHeight()));
+        }
+        GlStateManager._glBindVertexArray(atmoVao);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GlStateManager._glBindVertexArray(0);
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableBlend();
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(true);
     }
 
     private static boolean hasAncestorIn(PatchKey k, Set<PatchKey> set) {
@@ -277,5 +334,6 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         for (Gpu g : resident.values()) free(g);
         resident.clear();
         if (program >= 0) { GlStateManager.glDeleteProgram(program); program = -1; }
+        if (atmoProgram >= 0) { GlStateManager.glDeleteProgram(atmoProgram); atmoProgram = -1; }
     }
 }

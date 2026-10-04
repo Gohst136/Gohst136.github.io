@@ -82,7 +82,7 @@ public final class PlanetClient {
                 lastNanos = System.nanoTime();
                 if (selector == null) {
                     selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
-                    renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN));
+                    renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN), PLANET);
                 }
             }
         }

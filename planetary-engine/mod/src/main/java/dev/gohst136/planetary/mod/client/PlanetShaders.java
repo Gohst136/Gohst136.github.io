@@ -76,6 +76,113 @@ final class PlanetShaders {
             }
             """;
 
+    static final String ATMO_VERTEX = """
+            #version 150
+            out vec2 vNdc;
+            void main() {
+                vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+                vNdc = p * 2.0 - 1.0;
+                gl_Position = vec4(vNdc, 0.0, 1.0);
+            }
+            """;
+
+    /**
+     * Analytic single-scattering atmosphere (Rayleigh + Mie), full-screen, blended as
+     * result = inscatter + scene * transmittance. Radial coordinates are kept as (altitude, mu) pairs
+     * so float precision survives planet-sized radii.
+     */
+    static final String ATMO_FRAGMENT = """
+            #version 150
+            in vec2 vNdc;
+            uniform mat4 uInvProj;
+            uniform mat4 uView;       // rotation only
+            uniform vec3 uUp;         // unit vector from planet centre to camera
+            uniform vec3 uSun;
+            uniform float uR0;        // camera radius from the planet centre
+            uniform float uH0;        // camera altitude above the baseline radius (precise, from double)
+            uniform float uR;         // planet baseline radius
+            uniform float uAtmH;      // atmosphere height
+            out vec4 fragColor;
+            const float HR = 8000.0;
+            const float HM = 1200.0;
+            const vec3 BR = vec3(5.8e-6, 13.5e-6, 33.1e-6);
+            const float BM = 21e-6;
+            const float PI = 3.14159265;
+
+            // ray from the camera (cos angle mu to local up) against the sphere of radius R + dh
+            vec2 sphere(float mu, float dh) {
+                float b = uR0 * mu;
+                float c = (uH0 - dh) * (uR0 + uR + dh);
+                float disc = b * b - c;
+                if (disc < 0.0) return vec2(1.0, -1.0);
+                float q = sqrt(disc);
+                return vec2(-b - q, -b + q);
+            }
+
+            void main() {
+                vec4 v = uInvProj * vec4(vNdc, 1.0, 1.0);
+                vec3 d = normalize(transpose(mat3(uView)) * normalize(v.xyz / v.w));
+                float mu = dot(d, uUp);
+                vec2 atm = sphere(mu, uAtmH);
+                if (atm.y <= 0.0 || atm.x > atm.y) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+                float s0 = max(atm.x, 0.0), s1 = atm.y;
+                vec2 gnd = sphere(mu, 0.0);
+                if (gnd.x < gnd.y && gnd.x > 0.0) s1 = min(s1, gnd.x);
+                if (s1 <= s0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+
+                const int N = 16;
+                float ds = (s1 - s0) / float(N);
+                float cosS = dot(d, uSun);
+                float phaseR = 3.0 / (16.0 * PI) * (1.0 + cosS * cosS);
+                const float g = 0.76;
+                float phaseM = 3.0 / (8.0 * PI) * ((1.0 - g * g) * (1.0 + cosS * cosS))
+                        / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * cosS, 1.5));
+                float odR = 0.0, odM = 0.0;
+                vec3 L = vec3(0.0);
+                for (int i = 0; i < N; i++) {
+                    float s = s0 + (float(i) + 0.5) * ds;
+                    vec3 p = uR0 * uUp + s * d;
+                    float r = length(p);
+                    float h = max(r - uR, 0.0);
+                    float rhoR = exp(-h / HR), rhoM = exp(-h / HM);
+                    odR += rhoR * ds; odM += rhoM * ds;
+                    // sun visibility: planet shadow, then optical depth to the top of the atmosphere
+                    float b = dot(p, uSun);
+                    float cp = (r - uR) * (r + uR);
+                    float disc = b * b - cp;
+                    if (disc >= 0.0 && -b - sqrt(disc) > 0.0) continue;
+                    float ra = uR + uAtmH;
+                    float disc2 = b * b - (r - ra) * (r + ra);
+                    float sExit = -b + sqrt(max(disc2, 0.0));
+                    float ls = sExit / 4.0, sR = 0.0, sM = 0.0;
+                    for (int j = 0; j < 4; j++) {
+                        vec3 ps = p + uSun * ((float(j) + 0.5) * ls);
+                        float hs = max(length(ps) - uR, 0.0);
+                        sR += exp(-hs / HR) * ls; sM += exp(-hs / HM) * ls;
+                    }
+                    vec3 tau = BR * (odR + sR) + vec3(BM * 1.1) * (odM + sM);
+                    L += exp(-tau) * (rhoR * BR * phaseR + vec3(rhoM * BM * phaseM)) * ds;
+                }
+                float tView = exp(-(BR.g * odR + BM * 1.1 * odM));
+                vec3 col = 1.0 - exp(-L * 22.0);
+                fragColor = vec4(col, tView);
+            }
+            """;
+
+    static int compileAtmosphere() {
+        int vs = compile(GL20.GL_VERTEX_SHADER, ATMO_VERTEX);
+        int fs = compile(GL20.GL_FRAGMENT_SHADER, ATMO_FRAGMENT);
+        int prog = GL20.glCreateProgram();
+        GL20.glAttachShader(prog, vs);
+        GL20.glAttachShader(prog, fs);
+        GL20.glLinkProgram(prog);
+        if (GL20.glGetProgrami(prog, GL20.GL_LINK_STATUS) == 0)
+            throw new IllegalStateException("atmosphere link failed: " + GL20.glGetProgramInfoLog(prog));
+        GL20.glDeleteShader(vs);
+        GL20.glDeleteShader(fs);
+        return prog;
+    }
+
     static int compileProgram() {
         int vs = compile(GL20.GL_VERTEX_SHADER, VERTEX);
         int fs = compile(GL20.GL_FRAGMENT_SHADER, FRAGMENT);
