@@ -168,5 +168,7 @@ public final class PlanetClient {
         lines.addAll(renderer.stats());
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }
+        e.getGuiGraphics().flush();
+        PlanetAutoTest.captureIfPending();
     }
 }

@@ -1,7 +1,5 @@
 package dev.gohst136.planetary.mod.client;
 
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
 import dev.gohst136.planetary.lod.QuadtreeSelector;
 import dev.gohst136.planetary.math.Vec3;
 import dev.gohst136.planetary.telemetry.FrameStats;
@@ -39,6 +37,7 @@ final class PlanetAutoTest {
     private static double alt = STOPS[0];
     private static File outDir;
     private static FileWriter log;
+    private static String pendingName;
 
     private PlanetAutoTest() {}
 
@@ -81,16 +80,23 @@ final class PlanetAutoTest {
         frames++;
         if (hold == 0) return;
         if (++hold < HOLD_FRAMES) return;
-        // steady state reached at this altitude: record and screenshot
-        Minecraft mc = Minecraft.getInstance();
-        String name = String.format("alt_%08.0fm.png", STOPS[stop]);
-        Screenshot.grab(outDir, name, mc.getMainRenderTarget(), c -> {});
+        // steady state reached at this altitude: record stats now, screenshot at the END of this frame
+        // (RenderGuiEvent.Post), i.e. after the planet and the debug overlay have been drawn
+        pendingName = String.format("alt_%08.0fm.png", STOPS[stop]);
         String line = String.format("alt=%.0fm patches=%d maxLevel=%d splits=%d merges=%d select=%.2fms frame avg=%.1f p95=%.1f p99=%.1f worst=%.1f %s",
                 STOPS[stop], r.patches.size(), r.maxLevel, r.splits, r.merges, selectMs,
                 fs.average(), fs.p95(), fs.p99(), fs.worst(), renderer.stats());
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0;
+    }
+
+    /** Called from RenderGuiEvent.Post: the frame is complete (sky, planet, GUI), so grab it. */
+    static void captureIfPending() {
+        if (pendingName == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        Screenshot.grab(outDir, pendingName, mc.getMainRenderTarget(), c -> {});
+        pendingName = null;
         if (stop >= STOPS.length) {
             try { log.close(); } catch (IOException ignored) {}
             mc.execute(mc::stop);
