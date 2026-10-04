@@ -30,13 +30,21 @@ public final class HybridTerrain implements TerrainSampler {
 
     @Override
     public double heightAt(Vec3 d, double cell) {
+        double[] o = new double[2];
+        sample(d, cell, o);
+        return o[0];
+    }
+
+    @Override
+    public void sample(Vec3 d, double cell, double[] out) {
         double h = macro.heightAt(d, cell);
         double w = 1.0 - smooth(fadeStart, fadeEnd, cell);
-        if (w <= 0.0) return h;
+        if (w <= 0.0) { out[0] = out[1] = h; return; }
         var m = PlaneUnwrap.map(d, halfSpan, 0.08);
         double v = detail.applyAsDouble(m.x1(), m.z1());
         if (m.w2() > 0.0) v += (detail.applyAsDouble(m.x2(), m.z2()) - v) * m.w2();
-        return Math.max(-planet.maxDepth(), Math.min(planet.maxHeight(), h + w * v));
+        out[0] = Math.max(-planet.maxDepth(), Math.min(planet.maxHeight(), h + w * v));
+        out[1] = w * v + (1.0 - w) * h;       // fine views: local vanilla height; far views: planet-scale height
     }
 
     @Override

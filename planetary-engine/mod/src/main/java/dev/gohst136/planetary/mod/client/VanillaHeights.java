@@ -37,14 +37,40 @@ final class VanillaHeights implements DoubleBinaryOperator {
         this.maxY = level.getMaxBuildHeight();
     }
 
+    /** Last solid height found by this thread: consecutive mesh vertices are neighbours, so it is a good starting bracket. */
+    private final ThreadLocal<int[]> hint = ThreadLocal.withInitial(() -> new int[]{Integer.MIN_VALUE});
+
     @Override
     public double applyAsDouble(double x, double z) {
         long t0 = System.nanoTime();
         int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
         int lo = minY, hi = maxY;                         // invariant: solid at lo, air at hi
         double result;
-        if (d(bx, lo, bz) <= 0.0) result = minY;
-        else if (d(bx, hi, bz) > 0.0) result = maxY;
+        int[] h = hint.get();
+        boolean bracketed = false;
+        if (h[0] != Integer.MIN_VALUE) {                  // gallop outwards from the previous surface height
+            int g = Math.max(minY + 1, Math.min(maxY - 1, h[0]));
+            if (d(bx, g, bz) > 0.0) {                     // solid at g: surface is above, search upwards
+                lo = g;
+                for (int step = 8; ; step *= 2) {
+                    int t = Math.min(maxY, g + step);
+                    if (d(bx, t, bz) <= 0.0) { hi = t; bracketed = true; break; }
+                    lo = t;
+                    if (t >= maxY) break;
+                }
+            } else {                                      // air at g: surface is below
+                hi = g;
+                for (int step = 8; ; step *= 2) {
+                    int t = Math.max(minY, g - step);
+                    if (d(bx, t, bz) > 0.0) { lo = t; bracketed = true; break; }
+                    hi = t;
+                    if (t <= minY) break;
+                }
+            }
+        }
+        if (!bracketed) { lo = minY; hi = maxY; }
+        if (!bracketed && d(bx, lo, bz) <= 0.0) result = minY;
+        else if (!bracketed && d(bx, hi, bz) > 0.0) result = maxY;
         else {
             while (hi - lo > 1) {
                 int mid = (lo + hi) >>> 1;
@@ -53,6 +79,7 @@ final class VanillaHeights implements DoubleBinaryOperator {
             double dl = d(bx, lo, bz), dh = d(bx, hi, bz);
             result = lo + (dl <= dh ? 0.0 : dl / (dl - dh));
         }
+        h[0] = (int) Math.floor(result);
         calls.incrementAndGet();
         nanos.addAndGet(System.nanoTime() - t0);
         return result - seaLevel;

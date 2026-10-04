@@ -19,10 +19,14 @@ public final class PatchMeshBuilder {
         if (n < 2 || (n & 1) != 0) throw new IllegalArgumentException("gridCells must be even and >= 2");
         int w = n + 1;
         Vec3[] pos = new Vec3[w * w];
+        float[] colorH = new float[w * w + 4 * n];
+        double[] smp = new double[2];
         final double cell = planet.radius() * (Math.PI / 2.0) / (double) (1L << k.level()) / n;
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             Vec3 d = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n);
-            pos[j * w + i] = d.mul(planet.radius() + terrain.heightAt(d, cell));
+            terrain.sample(d, cell, smp);
+            pos[j * w + i] = d.mul(planet.radius() + smp[0]);
+            colorH[j * w + i] = (float) smp[1];
         }
         Vec3 centerDir = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), 0.5, 0.5);
         Vec3 o = centerDir.mul(planet.radius() + terrain.heightAt(centerDir, cell));
@@ -38,7 +42,7 @@ public final class PatchMeshBuilder {
             int idx = j * w + i;
             put(p, idx, pos[idx].sub(o));
             put(m, idx, morphed(pos, w, n, i, j).sub(o));
-            hs[idx] = (float) (pos[idx].length() - planet.radius());
+            hs[idx] = colorH[idx];
         }
         int[] ring = new int[skirtCount];
         int r = 0;

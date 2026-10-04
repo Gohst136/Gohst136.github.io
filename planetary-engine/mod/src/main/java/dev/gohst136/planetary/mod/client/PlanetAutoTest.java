@@ -186,7 +186,7 @@ final class PlanetAutoTest {
     }
 
     private static final double[] BUBBLE_ALTS = {300, 100, 30, 8};
-    private static int bubbleStop, bubbleWait;
+    private static int bubbleStop, bubbleWait, extraWait;
     private static double bx, bz, by0;
     private static float byaw, bpitch;
 
@@ -215,13 +215,26 @@ final class PlanetAutoTest {
                 double e = PlanetClient.vanilla.applyAsDouble(bx + i * 8, bz + j * 8) - PlanetClient.vanilla.exactHeight(bx + i * 8, bz + j * 8);
                 err += Math.abs(e); signed += e; worst = Math.max(worst, Math.abs(e)); n++;
             }
+            // global fidelity: 120 scattered plane points (macro-independent), signed so a constant bias can be seen
+            java.util.Random rnd = new java.util.Random(7);
+            double gs = 0, ga = 0, gss = 0; int gn = 120;
+            for (int i = 0; i < gn; i++) {
+                double gx = (rnd.nextDouble() - 0.5) * 8e6, gz = (rnd.nextDouble() - 0.5) * 8e6;
+                double e = PlanetClient.vanilla.applyAsDouble(gx, gz) - PlanetClient.vanilla.exactHeight(gx, gz);
+                gs += e; ga += Math.abs(e); gss += e * e;
+            }
+            double gmean = gs / gn;
+            String gline = String.format("GLOBAL detail-layer error over %d scattered points: mean=%.2f m, mean|err|=%.2f m, std=%.2f m", gn, gmean, ga / gn, Math.sqrt(gss / gn - gmean * gmean));
+            System.out.println("[planetary-autotest] " + gline);
             String line = String.format("BUBBLE: face=%d plane=(%.0f,%.0f) groundY=%.1f | detail-layer vs generator height: mean |err|=%.2f m, signed mean=%.2f m, worst=%.1f m (n=%d)", face, bx, bz, by0, err / n, signed / n, worst, n);
             System.out.println("[planetary-autotest] " + line);
-            try { log = new FileWriter(new File(outDir, "stats.txt"), true); log.write(line + "\n"); log.close(); } catch (IOException ignored) {}
+            try { log = new FileWriter(new File(outDir, "stats.txt"), true); log.write(line + "\n" + gline + "\n"); log.close(); } catch (IOException ignored) {}
             PlanetClient.bubble = PlanetClient.makeBubble();
             teleport(mc, BUBBLE_ALTS[0]);
             bubbleWait = 400;                                     // ~20 s: first chunks around the anchor
         } else if (landingTick > 5 && --bubbleWait <= 0) {
+            if (!mc.levelRenderer.hasRenderedAllSections() && ++extraWait < 600) { bubbleWait = 0; return; }   // wait for the real chunks to be meshed
+            extraWait = 0;
             String name = String.format("bubble_%03.0fm.png", BUBBLE_ALTS[bubbleStop]);
             pendingName = name;
             bubbleStop++;

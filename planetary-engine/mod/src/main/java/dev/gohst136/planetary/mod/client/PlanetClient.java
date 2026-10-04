@@ -218,6 +218,7 @@ public final class PlanetClient {
         // predictive streaming: where will the camera be in 0.5 s / 1.5 s? Load what it will need, ordered by time-to-visibility
         if (lastPos != null && dt > 1e-4) velocity = velocity.mul(0.7).add(pos.sub(lastPos).mul(0.3 / dt));
         lastPos = pos;
+        if (bubble != null && velocity.length() > 300.0) velocity = Vec3.ZERO;      // a teleport, not a flight: never prefetch along it
         if (velocity.length() > 1.0) {
             for (int i = 0; i < 2; i++) {
                 double horizon = i == 0 ? 0.5 : 1.5;
