@@ -156,14 +156,23 @@ public final class PlanetClient {
         int w = mc.getWindow().getWidth(), h = mc.getWindow().getHeight();
         double aspect = (double) w / h;
         var up = cam.getUpVector();
-        CameraView view = new CameraView(pos, fwd, new Vec3(up.x(), up.y(), up.z()), fovY, h, w, speed);
+        // auto-level: roll the view so the camera's up is the local vertical (horizon stays level anywhere on the planet)
+        Vec3 camUp = new Vec3(up.x(), up.y(), up.z());
+        Vec3 desired = radial.sub(fwd.mul(radial.dot(fwd)));
+        Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
+        if (desired.length() > 1e-3) {
+            desired = desired.normalize();
+            camUp = desired;
+            org.joml.Vector3f dv = viewRot.transformDirection(new org.joml.Vector3f((float) desired.x(), (float) desired.y(), (float) desired.z()));
+            viewRot = new Matrix4f().rotateZ((float) Math.atan2(dv.x, dv.y)).mul(viewRot);
+        }
+        CameraView view = new CameraView(pos, fwd, camUp, fovY, h, w, speed);
 
         long t0 = System.nanoTime();
         lastResult = selector.select(view);
         selectMs = (System.nanoTime() - t0) / 1e6;
 
         Matrix4f proj = new Matrix4f().perspective((float) fovY, (float) aspect, (float) NEAR, (float) FAR);
-        Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
         float[] sun = {0.6f, 0.5f, 0.62f};
         float sl = (float) Math.sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
         sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;

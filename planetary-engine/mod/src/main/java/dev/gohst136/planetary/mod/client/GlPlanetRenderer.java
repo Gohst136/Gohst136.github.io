@@ -323,6 +323,12 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     /** True when every selected patch is drawn from its own mesh and no work is pending. */
     boolean settled() { return inFlight.isEmpty() && finished.isEmpty() && fallbackLastFrame == 0 && holesLastFrame == 0; }
 
+    /** Drops every resident mesh (used by the benchmark to start a transit with a cold cache). */
+    void clearCache() {
+        for (Gpu g : resident.values()) free(g);
+        resident.clear();
+    }
+
     int fallbackLastFrame() { return fallbackLastFrame; }
     int holesLastFrame() { return holesLastFrame; }
 
