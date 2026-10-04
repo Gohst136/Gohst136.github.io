@@ -39,6 +39,7 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished, stopAfterCapture, landing;
+    private static long chunkWaitStart;
     // watchdog: if the benchmark stops making progress, dump every thread's stack to hang.txt and exit, so results always arrive
     private static volatile long lastFrameNanos, lastStageNanos;
     private static volatile String stageName = "start";
@@ -181,6 +182,10 @@ final class PlanetAutoTest {
         double groundRadius = targetGround;
         if (orbit && orbitHold >= 0) return ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(PlanetClient.PLANET.radius() + ORBIT_ALT);
         if (transit) {
+            if (PlanetClient.realWorld && alt < 420 && !PlanetClient.bubbleLive && PlanetClient.bubble != null && !PlanetClient.chunksReady(Minecraft.getInstance())) {
+                lastTransitNanos = System.nanoTime();                    // chunks missing: hover (the clock must not run)
+                return targetDir().mul(groundRadius + alt);
+            }
             // REAL time (clamped), so streaming gets exactly as long as in a genuine flight
             long now = System.nanoTime();
             double dt = lastTransitNanos == 0 ? 0 : Math.min(0.1, (now - lastTransitNanos) / 1e9);
@@ -188,6 +193,11 @@ final class PlanetAutoTest {
             t += dt;
             alt = Math.max(STOPS[STOPS.length - 1], alt - Math.min(alt / 1.0, alt < 400 ? 40.0 : 1e18) * dt);   // v = alt per second, capped at 40 m/s below 400 m
         } else if (stop < STOPS.length && hold == 0) {
+            // real-world path: do not descend into the bubble until the real chunks around the landing site exist (max 60 s)
+            if (PlanetClient.realWorld && alt < 420 && !PlanetClient.bubbleLive) {
+                if (chunkWaitStart == 0) chunkWaitStart = System.nanoTime();
+                if (System.nanoTime() - chunkWaitStart < 60_000_000_000L) return targetDir().mul(groundRadius + alt);
+            }
             t += 1.0 / 30.0;
             alt = Math.max(STOPS[STOPS.length - 1], alt - Math.min(alt / 2.0, alt < 400 ? 40.0 : 1e18) / 30.0);   // v = alt/2 per second, capped at 40 m/s below 400 m
             if (alt <= STOPS[stop] * 1.0001) { alt = STOPS[stop]; hold = 1; }

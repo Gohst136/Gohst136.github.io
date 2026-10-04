@@ -163,7 +163,7 @@ public final class PlanetClient {
             return;
         }
         if (!preloaded) return;
-        if (pendingTp == null && alt < 300 && dist < 1500 && frameCount - preloadFrame > 200 && mc.levelRenderer.hasRenderedAllSections()) {
+        if (pendingTp == null && alt < 300 && dist < 1500 && frameCount - preloadFrame > 200 && chunksReady(mc) && mc.levelRenderer.hasRenderedAllSections()) {
             double[] v = bubble.vanillaPos(pos);
             float[] yp = bubble.yawPitch(fwd);
             pendingTp = new double[]{v[0], v[1] - mc.player.getEyeHeight(), v[2]};
@@ -173,6 +173,15 @@ public final class PlanetClient {
             double dx = mc.player.getX() - pendingTp[0], dy = mc.player.getY() - pendingTp[1], dz = mc.player.getZ() - pendingTp[2];
             if (dx * dx + dy * dy + dz * dz < 9.0) { bubbleLive = true; pendingTp = null; }
         }
+    }
+
+    /** True when the client has the chunks around the anchor (5x5) that the parked real player makes the server generate. */
+    static boolean chunksReady(Minecraft mc) {
+        if (bubble == null || mc.level == null) return false;
+        int cx = (int) Math.floor(bubble.x0) >> 4, cz = (int) Math.floor(bubble.z0) >> 4;
+        for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++)
+            if (!mc.level.getChunkSource().hasChunk(cx + dx, cz + dz)) return false;
+        return true;
     }
 
     /** Moves the real (server-side) player; used for the handoff and by the benchmark. */
