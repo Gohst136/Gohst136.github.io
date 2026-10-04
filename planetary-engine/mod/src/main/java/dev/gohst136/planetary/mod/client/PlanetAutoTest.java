@@ -134,7 +134,7 @@ final class PlanetAutoTest {
     private static Vec3 targetDir() {
         if (target == null) {
             final boolean vanillaPath = PlanetClient.vanilla != null;
-            final double wanted = vanillaPath ? 2000.0 : 700.0;       // hill country / mountain foothills: relief to look at
+            final double wanted = vanillaPath ? 2000.0 : 150.0;       // lowland hills: vanilla snows biomes above ~500 m (its temperature falls with absolute Y), so stay below that
             dev.gohst136.planetary.terrain.TerrainSampler search = vanillaPath
                     ? new dev.gohst136.planetary.terrain.ProceduralTerrain(PlanetClient.PLANET)
                     : new dev.gohst136.planetary.terrain.RealisticTerrain(PlanetClient.PLANET);
@@ -150,7 +150,7 @@ final class PlanetAutoTest {
                 if (Math.abs(h - wanted) < bestErr) {
                     if (!vanillaPath) {                                   // the landing column must lie in the 1:1 height range
                         double full = search.heightAt(d, 1.0);
-                        if (full < 120 || full > 900) continue;
+                        if (full < 20 || full > 260) continue;
                     }
                     bestErr = Math.abs(h - wanted); bestDir = d; bestH = h;
                 }

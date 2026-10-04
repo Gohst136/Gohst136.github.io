@@ -53,3 +53,13 @@ correction and networking (11), vehicles/compat (12), GPU-driven culling with Hi
 `autotest-results/` (stats, screenshots, log, `tested-commit.txt`); the cloud session reads and continues.
 Autotest output: 8 altitude stops, an 8-view orbit tour (`orbit_*.png`), a cold-cache real-time transit, target/fidelity lines.
 Unit tests: `gradle :core:test` (coordinates, cube sphere, bounds, selector, realistic terrain statistics, plane-unwrap continuity).
+
+## 8. Status of the real-world bubble (measured)
+- The planet's own `ChunkGenerator` fills real chunks from `RealisticTerrain` (11 ms/chunk). Real vs planet function at the landing
+  site: median |dY| = 1 block, 88-92 % of columns within 3 blocks (trees and features count as terrain).
+- Orbit -> ground works end to end in the benchmark (20,000 km -> real blocks), no loading screen, no dimension change. The planet
+  mesh stays as the backdrop behind real chunks; the real player's camera takes over below 300 m.
+- Known limitation: vanilla lowers biome temperature with absolute Y, so high plateaus (> ~500 m) snow over where the planet colours
+  say green; the benchmark lands in lowlands. Fix options: custom biome temperature modifier or a dimension-specific climate.
+- Bugs found by measuring (kept here as lessons): a mode flip every frame painted the planet over the real chunks (exit condition used
+  height above sea level); an unfilled biome cache made worldgen 30x slower; stale save folders invalidated early runs.

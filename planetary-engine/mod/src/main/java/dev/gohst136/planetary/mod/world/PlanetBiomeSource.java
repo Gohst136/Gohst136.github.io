@@ -75,6 +75,11 @@ public final class PlanetBiomeSource extends BiomeSource {
         return biomes.get(k);
     }
 
+    /**
+     * Vanilla lowers a biome's temperature with ABSOLUTE height (above Y 80) and snows where it falls below 0.15, so a warm
+     * lowland biome snows over on any plateau above ~500 m. Where the planet climate says "not cold", warm biomes that
+     * would snow are replaced by their cold-tolerant neighbours' warm counterparts further down in {@link #pick}.
+     */
     static ResourceKey<Biome> pick(RealisticTerrain.Surface s) {
         double h = s.height(), t = s.temperature(), m = s.moisture();
         if (s.river() > 0.7 && h >= -1.0) return t < -5 ? Biomes.FROZEN_RIVER : Biomes.RIVER;
