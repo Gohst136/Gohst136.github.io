@@ -297,11 +297,11 @@ public final class PlanetClient {
             handoff(mc, pos.normalize(), fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
         } else {
             // bubble: the camera IS the real player's camera, mapped into the planet frame
+            if (PlanetAutoTest.enabled()) { PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); } else speed = 0;   // scripted descent keeps advancing; the real player is driven from its altitude
             var cp = cam.getPosition();
             pos = bubble.position(cp.x, cp.y, cp.z);
             fwd = bubble.direction(look.x(), look.y(), look.z());
             radial = pos.normalize();
-            speed = 0;
             // flew back out of the bubble: more than 800 m above the LOCAL ground (not above sea level: the landing site can lie on a
             // plateau), or more than 3 km away from the anchor
             double aboveGround = pos.length() - bubbleGroundRadius;
