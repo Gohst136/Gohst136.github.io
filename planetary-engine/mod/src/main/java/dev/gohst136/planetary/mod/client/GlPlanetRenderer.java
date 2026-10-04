@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private static final int GRID = 32;
     private static final int WORKERS = Math.max(2, Math.min(5, Runtime.getRuntime().availableProcessors() / 2 - 1));   // leave cores for render + server threads
-    private static final long VRAM_BUDGET_BYTES = 192L << 20;
+    private static final long VRAM_BUDGET_BYTES = Long.getLong("planetary.vramMB", 320L) << 20;
     private static final int MAX_UPLOADS_PER_FRAME = 6;
     private static final int MAX_REQUESTS_PER_FRAME = 64;
     private static final int PIN_LEVEL = 2;                       // levels <= 2 stay resident (126 meshes, ~8 MB)
@@ -72,6 +72,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final ThreadPoolExecutor workers;
     private final AtomicInteger workerId = new AtomicInteger();
 
+    private int sharedEbo = -1;      // all patches have the same topology: one index buffer serves every VAO
     private int program = -1;
     private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
     private long residentBytes;
@@ -114,18 +115,21 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             vb.putFloat(mesh.colors()[i * 4]).putFloat(mesh.colors()[i * 4 + 1]).putFloat(mesh.colors()[i * 4 + 2]).putFloat(mesh.colors()[i * 4 + 3]);
         }
         vb.flip();
-        ByteBuffer ib = MemoryUtil.memAlloc(mesh.indices().length * 4);
-        for (int idx : mesh.indices()) ib.putInt(idx);
-        ib.flip();
+        if (sharedEbo < 0) {
+            ByteBuffer ib = MemoryUtil.memAlloc(mesh.indices().length * 4);
+            for (int idx : mesh.indices()) ib.putInt(idx);
+            ib.flip();
+            sharedEbo = GlStateManager._glGenBuffers();
+            GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEbo);
+            GlStateManager._glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ib, GL15.GL_STATIC_DRAW);
+            }
 
         g.vao = GlStateManager._glGenVertexArrays();
         g.vbo = GlStateManager._glGenBuffers();
-        g.ebo = GlStateManager._glGenBuffers();
         GlStateManager._glBindVertexArray(g.vao);
         GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, g.vbo);
         GlStateManager._glBufferData(GL15.GL_ARRAY_BUFFER, vb, GL15.GL_STATIC_DRAW);
-        GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, g.ebo);
-        GlStateManager._glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ib, GL15.GL_STATIC_DRAW);
+        GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, sharedEbo);     // recorded in the VAO
         GlStateManager._enableVertexAttribArray(0);
         GlStateManager._vertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 40, 0);
         GlStateManager._enableVertexAttribArray(1);
@@ -134,11 +138,10 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         GlStateManager._vertexAttribPointer(2, 4, GL11.GL_FLOAT, false, 40, 24);
         GlStateManager._glBindVertexArray(0);
         MemoryUtil.memFree(vb);
-        MemoryUtil.memFree(ib);
 
         g.indexCount = mesh.indices().length;
         g.origin = mesh.origin();
-        g.bytes = (long) n * 40 + (long) mesh.indices().length * 4;
+        g.bytes = (long) n * 40;
         g.lastUsedFrame = frame;
         residentBytes += g.bytes;
         uploadsTotal++;
@@ -155,7 +158,6 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private void free(Gpu g) {
         residentBytes -= g.bytes;
         GlStateManager._glDeleteBuffers(g.vbo);
-        GlStateManager._glDeleteBuffers(g.ebo);
         GL30.glDeleteVertexArrays(g.vao);
     }
 

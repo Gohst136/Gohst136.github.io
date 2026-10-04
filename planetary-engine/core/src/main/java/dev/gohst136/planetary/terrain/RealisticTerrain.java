@@ -181,14 +181,15 @@ public final class RealisticTerrain implements TerrainSampler {
 
     @Override
     public double unresolvedDetail(double cell) {
-        // detail octaves below 2 cells are missing; rivers narrower than a cell are widened, which costs depth accuracy
-        double err = 0.0, amp = DETAIL_AMP, f = DETAIL_FREQ;
+        // Octaves with wavelength < 2 cells are missing. Independent octaves add up as a root of squares (not as a sum of
+        // amplitudes), and the visible relief factor ("rough") is ~0.7 on average. Narrow rivers are widened, costing depth.
+        double sq = 0.0, amp = DETAIL_AMP, f = DETAIL_FREQ;
         for (int k = 0; k < DETAIL_MAX_OCTAVES; k++) {
             double wavelength = 2.0 * Math.PI * radius / f;
-            if (wavelength < 2.0 * cell) err += amp * 0.7;
+            if (wavelength < 2.0 * cell) { double a = amp * 0.7 * 0.7; sq += a * a; }
             amp *= DETAIL_PERSIST; f *= 2.0;
         }
-        return err + Math.min(20.0, 0.12 * Math.max(0.0, cell - 1.0));
+        return Math.sqrt(sq) + Math.min(20.0, 0.12 * Math.max(0.0, cell - 1.0));
     }
 
     /** Heuristic (not provable): relief is rough and rivers are narrow; bounds saturate at the planet radii anyway. */
