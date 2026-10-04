@@ -1,11 +1,11 @@
 GPU: NVIDIA GeForce RTX 2060/PCIe/SSE2 | GL 4.6.0 NVIDIA 610.88
-alt=20000000m patches=5 maxLevel=0 splits=0 merges=0 select=0,07ms frame avg=16,5 p95=100,0 p99=100,0 worst=100,0 [resident=5 vram=0MB/192MB, drawn=5 fallback=0 holes=0 inFlight=0 req/frame=0, built=5 uploaded=5]
-alt=2000000m patches=14 maxLevel=2 splits=0 merges=0 select=0,04ms frame avg=12,8 p95=15,8 p99=100,0 worst=100,0 [resident=17 vram=1MB/192MB, drawn=14 fallback=0 holes=0 inFlight=0 req/frame=0, built=17 uploaded=17]
-alt=200000m patches=23 maxLevel=6 splits=0 merges=0 select=0,03ms frame avg=14,4 p95=21,9 p99=100,0 worst=100,0 [resident=53 vram=3MB/192MB, drawn=23 fallback=0 holes=0 inFlight=0 req/frame=0, built=53 uploaded=53]
-alt=20000m patches=56 maxLevel=10 splits=0 merges=0 select=0,11ms frame avg=17,0 p95=100,0 p99=100,0 worst=100,0 [resident=92 vram=5MB/192MB, drawn=39 fallback=25 holes=0 inFlight=27 req/frame=0, built=92 uploaded=92]
-alt=2000m patches=105 maxLevel=14 splits=0 merges=0 select=0,13ms frame avg=19,9 p95=100,0 p99=100,0 worst=100,0 [resident=163 vram=9MB/192MB, drawn=71 fallback=47 holes=0 inFlight=80 req/frame=0, built=163 uploaded=163]
-alt=200m patches=142 maxLevel=17 splits=0 merges=0 select=0,23ms frame avg=22,4 p95=100,0 p99=100,0 worst=100,0 [resident=222 vram=13MB/192MB, drawn=83 fallback=70 holes=0 inFlight=102 req/frame=0, built=222 uploaded=222]
-alt=20m patches=191 maxLevel=21 splits=0 merges=0 select=0,23ms frame avg=24,3 p95=100,0 p99=100,0 worst=100,0 [resident=283 vram=16MB/192MB, drawn=101 fallback=83 holes=0 inFlight=141 req/frame=0, built=283 uploaded=283]
-alt=2m patches=183 maxLevel=22 splits=0 merges=0 select=0,26ms frame avg=23,7 p95=100,0 p99=100,0 worst=100,0 [resident=319 vram=18MB/192MB, drawn=115 fallback=59 holes=0 inFlight=161 req/frame=0, built=319 uploaded=319]
-TERRAIN: hybrid (procedural macro + vanilla worldgen detail, seed -8448590980794518818) | vanilla samples=360089 avg=4442us
-TRANSIT (continuous, real time, v=alt/s, no holds): frames=1252 fallbackFrames=320 (max 69 patches) holeFrames=0 (max 0) merges=0 frame ms avg=12,9 p95=17,2 p99=18,0 worst=19,9
+alt=20000000m patches=5 maxLevel=0 splits=0 merges=0 select=0,07ms frame avg=12,9 p95=82,2 p99=100,0 worst=100,0 [resident=5 vram=0MB/192MB, drawn=5 fallback=0 holes=0 inFlight=0 req/frame=0, built=5 uploaded=5]
+alt=2000000m patches=12 maxLevel=2 splits=0 merges=0 select=0,04ms frame avg=10,0 p95=12,0 p99=82,2 worst=100,0 [resident=15 vram=0MB/192MB, drawn=12 fallback=0 holes=0 inFlight=0 req/frame=0, built=15 uploaded=15]
+alt=200000m patches=23 maxLevel=6 splits=0 merges=0 select=0,05ms frame avg=10,3 p95=12,9 p99=54,4 worst=100,0 [resident=47 vram=2MB/192MB, drawn=23 fallback=0 holes=0 inFlight=0 req/frame=0, built=47 uploaded=47]
+alt=20000m patches=54 maxLevel=10 splits=0 merges=0 select=0,07ms frame avg=11,0 p95=38,1 p99=54,4 worst=100,0 [resident=105 vram=6MB/192MB, drawn=54 fallback=0 holes=0 inFlight=0 req/frame=0, built=105 uploaded=105]
+alt=2000m patches=96 maxLevel=14 splits=0 merges=0 select=0,09ms frame avg=12,2 p95=45,0 p99=62,9 worst=100,0 [resident=184 vram=10MB/192MB, drawn=96 fallback=0 holes=0 inFlight=0 req/frame=0, built=184 uploaded=184]
+alt=200m patches=131 maxLevel=17 splits=0 merges=0 select=0,14ms frame avg=13,5 p95=51,5 p99=76,3 worst=100,0 [resident=257 vram=15MB/192MB, drawn=131 fallback=0 holes=0 inFlight=0 req/frame=0, built=257 uploaded=257]
+alt=20m patches=146 maxLevel=19 splits=0 merges=0 select=0,15ms frame avg=13,5 p95=55,1 p99=90,5 worst=100,0 [resident=301 vram=17MB/192MB, drawn=146 fallback=0 holes=0 inFlight=0 req/frame=0, built=301 uploaded=301]
+alt=2m patches=143 maxLevel=19 splits=0 merges=0 select=0,14ms frame avg=11,9 p95=51,4 p99=76,5 worst=100,0 [resident=302 vram=17MB/192MB, drawn=143 fallback=0 holes=0 inFlight=0 req/frame=0, built=302 uploaded=302]
+TERRAIN: hybrid (procedural macro + vanilla worldgen detail, seed 5390375825204569875) | vanilla samples=312951 avg=147us
+TRANSIT (continuous, real time, v=alt/s, no holds): frames=1920 fallbackFrames=0 (max 0 patches) holeFrames=0 (max 0) merges=1 frame ms avg=8,4 p95=10,3 p99=10,7 worst=17,4
