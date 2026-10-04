@@ -349,7 +349,7 @@ public final class PlanetClient {
         float[] sun = SUN;
         PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
         // planet mode owns the whole picture: black space (stars are added by the atmosphere pass), depth reset
-        RenderSystem.clearColor(0f, 0f, 0f, 1f);
+        if (planetOff) RenderSystem.clearColor(1f, 0f, 1f, 1f); else RenderSystem.clearColor(0f, 0f, 0f, 1f);   // magenta backdrop in the diagnostic shot
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
         if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
         if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop

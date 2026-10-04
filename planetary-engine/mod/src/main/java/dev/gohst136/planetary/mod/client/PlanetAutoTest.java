@@ -239,7 +239,7 @@ final class PlanetAutoTest {
             if (pendingName != null) return;
             postFrames++;
             if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 2; postFrames = 0; }
-            else if (post == 2) { PlanetClient.planetOff = true; post = 3; postFrames = 0; }
+            else if (post == 2) { PlanetClient.planetOff = true; Minecraft.getInstance().options.gamma().set(1.0); post = 3; postFrames = 0; }   // magenta backdrop + full brightness: if real blocks are drawn at all they must show
             else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; stopAfterCapture = true; }
             return;
         }
