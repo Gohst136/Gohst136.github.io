@@ -16,11 +16,14 @@ final class PlanetShaders {
             uniform vec3 uOffset;     // patch origin - camera, computed in double on the CPU
             uniform float uMorph;     // 0 = own grid, 1 = parent grid
             uniform float uFarLog;    // log2(far + 1)
+            uniform vec3 uOriginMod;  // patch origin modulo 1024 m (double on CPU) so the 1 m grid stays precise
+            out vec3 vLocal;
             out vec3 vRel;
             out float vHeight;
             void main() {
                 vec3 rel = uOffset + mix(aPos, aMorph, uMorph);
                 vRel = rel;
+                vLocal = mix(aPos, aMorph, uMorph) + uOriginMod;
                 vHeight = aHeight;
                 vec4 c = uProj * uView * vec4(rel, 1.0);
                 c.z = (2.0 * log2(max(1e-6, 1.0 + c.w)) / uFarLog - 1.0) * c.w;
@@ -31,6 +34,7 @@ final class PlanetShaders {
     static final String FRAGMENT = """
             #version 150
             in vec3 vRel;
+            in vec3 vLocal;
             in float vHeight;
             uniform vec3 uSun;        // unit vector towards the sun (planet frame == world axes)
             uniform vec3 uCamPos;     // camera position in planet frame (float is fine for a direction)
@@ -53,6 +57,18 @@ final class PlanetShaders {
                 // faceted normals are only meaningful (and float-precise) close to the camera
                 float w = 1.0 - smoothstep(2.0e3, 3.0e4, length(vRel));
                 n = normalize(mix(up, n, w));
+                // scale reference: faint 1 m lattice and stronger 16 m lattice, faded out when a pixel spans a cell
+                vec3 fw = fwidth(vLocal);
+                float fp = max(fw.x, max(fw.y, fw.z));
+                vec3 f1 = abs(fract(vLocal) - 0.5);
+                float l1 = (1.0 - smoothstep(0.0, 0.04 + fp, 0.5 - max(f1.x, max(f1.y, f1.z)))) * (1.0 - smoothstep(0.25, 0.6, fp));
+                vec3 p16 = vLocal / 16.0;
+                vec3 f16 = abs(fract(p16) - 0.5);
+                float l16 = (1.0 - smoothstep(0.0, 0.03 + fp / 16.0, 0.5 - max(f16.x, max(f16.y, f16.z)))) * (1.0 - smoothstep(0.25, 0.6, fp / 16.0));
+                vec3 cell = floor(vLocal);
+                float jitter = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453) * (1.0 - smoothstep(0.1, 0.4, fp));
+                col *= 0.92 + 0.16 * jitter;
+                col = mix(col, col * 0.55, 0.35 * l1 + 0.5 * l16);
                 float diff = max(dot(n, uSun), 0.0);
                 fragColor = vec4(col * (0.04 + 0.96 * diff), 1.0);
             }

@@ -52,7 +52,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final AtomicInteger workerId = new AtomicInteger();
 
     private int program = -1;
-    private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos;
+    private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
     private long residentBytes, frame;
     private int drawnLastFrame, requestedLastFrame;
     private final java.util.concurrent.atomic.AtomicLong meshesBuilt = new java.util.concurrent.atomic.AtomicLong();
@@ -174,6 +174,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                 v3.clear();
                 v3.put((float) (g.origin[0] - cam[0])).put((float) (g.origin[1] - cam[1])).put((float) (g.origin[2] - cam[2])).flip();
                 GlStateManager._glUniform3(uOffset, v3);
+                v3.clear();
+                for (int a = 0; a < 3; a++) v3.put((float) (g.origin[a] - Math.floor(g.origin[a] / 1024.0) * 1024.0));
+                GlStateManager._glUniform3(uOriginMod, v3.flip());
                 GlStateManager._glUniform1(uMorph, st.floats(e.getValue()));
                 GlStateManager._glBindVertexArray(g.vao);
                 GL11.glDrawElements(GL11.GL_TRIANGLES, g.indexCount, GL11.GL_UNSIGNED_INT, 0L);
@@ -205,6 +208,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         uFarLog = GlStateManager._glGetUniformLocation(program, "uFarLog");
         uSun = GlStateManager._glGetUniformLocation(program, "uSun");
         uCamPos = GlStateManager._glGetUniformLocation(program, "uCamPos");
+        uOriginMod = GlStateManager._glGetUniformLocation(program, "uOriginMod");
     }
 
     private void drainUploads() {

@@ -69,24 +69,29 @@ final class PlanetAutoTest {
 
     static double scriptedSpeed() { return Math.max(5.0, alt / 2.0); }
 
-    /** Highest point found on a 100k-point Fibonacci sphere: the descent targets a mountain, not the sea. */
+    /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
         if (target == null) {
-            double best = -1e18; Vec3 bestDir = new Vec3(1, 0, 0);
+            double bestErr = 1e18, bestH = 0; Vec3 bestDir = new Vec3(1, 0, 0);
             int n = 100_000;
             for (int i = 0; i < n; i++) {
                 double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
                 double h = PlanetClient.TERRAIN.heightAt(d);
-                if (Math.abs(y) < 0.9 && h > best) { best = h; bestDir = d; }   // keep away from the poles (look vector is degenerate there)
+                if (Math.abs(y) < 0.9 && Math.abs(h - 2000) < bestErr) { bestErr = Math.abs(h - 2000); bestDir = d; bestH = h; }
             }
-            target = bestDir; targetGround = PlanetClient.PLANET.radius() + best;
-            System.out.printf("[planetary-autotest] target mountain height=%.0f m dir=%s%n", best, target);
+            target = bestDir; targetGround = PlanetClient.PLANET.radius() + bestH;
+            System.out.printf("[planetary-autotest] target height=%.0f m dir=%s%n", bestH, target);
         }
         return target;
     }
 
-    private static double lookWeight() { return alt > 2e6 ? 0 : 0.7 * Math.sqrt(1 - alt / 2e6); }
+    /** Tilt from nadir: up to 60 deg, but never beyond 60% of the horizon angle (keeps the planet in view from afar). */
+    private static double lookWeight() {
+        double R = PlanetClient.PLANET.radius();
+        double tilt = Math.min(Math.toRadians(60), 0.6 * Math.asin(R / (R + alt)));
+        return Math.tan(tilt);
+    }
 
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
