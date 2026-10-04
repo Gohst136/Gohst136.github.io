@@ -29,7 +29,7 @@ import java.util.List;
  * Phase 2 test harness: a detached free-flight camera over one procedural planet.
  * Toggle with P. While active, vanilla player movement is zeroed (look still works), the camera
  * moves with W/A/S/D/Space/Shift at a speed proportional to altitude, and the planet is drawn at
- * RenderLevelStageEvent.AFTER_SKY followed by a depth clear so vanilla geometry still renders.
+ * RenderLevelStageEvent.AFTER_LEVEL after a depth clear: the planet covers the vanilla world wherever it is visible (temporary until the Phase 6 bubble).
  * Everything here runs on the client render/main thread (selector and GL cache are single-owner).
  */
 @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
@@ -40,8 +40,8 @@ public final class PlanetClient {
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
-    private static final PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
-    private static final ProceduralTerrain TERRAIN = new ProceduralTerrain(PLANET);
+    static final PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
+    static final ProceduralTerrain TERRAIN = new ProceduralTerrain(PLANET);
 
     static boolean active;
     static Vec3 pos = Vec3.ZERO;
@@ -98,7 +98,7 @@ public final class PlanetClient {
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent e) {
-        if (!active || e.getStage() != RenderLevelStageEvent.Stage.AFTER_SKY || selector == null) return;
+        if (!active || e.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL || selector == null) return;
         Minecraft mc = Minecraft.getInstance();
         long now = System.nanoTime();
         double dt = Math.min(0.1, (now - lastNanos) / 1e9);
@@ -124,7 +124,7 @@ public final class PlanetClient {
         if (o.keyJump.isDown()) move = move.add(radial);
         if (o.keyShift.isDown()) move = move.sub(radial);
         if (move.length() > 0) pos = pos.add(move.normalize().mul(speed * dt));
-        if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(PLANET.radius() + TERRAIN.heightAt(new Vec3(1, 0, 0))); speed = PlanetAutoTest.scriptedSpeed(); }
+        if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); }
         // minimal terrain contact: never go below 2 m above the ground (swept collision comes in Phase 8)
         Vec3 nd = pos.normalize();
         double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
@@ -148,8 +148,8 @@ public final class PlanetClient {
         float sl = (float) Math.sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
         sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
         PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
+        RenderSystem.clear(256, Minecraft.ON_OSX);   // planet wins over the vanilla world wherever it covers the screen
         renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
-        RenderSystem.clear(256, Minecraft.ON_OSX);   // let vanilla geometry draw over the planet
     }
 
     @SubscribeEvent

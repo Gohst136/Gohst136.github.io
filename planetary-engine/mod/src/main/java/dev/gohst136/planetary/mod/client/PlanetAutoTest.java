@@ -38,6 +38,8 @@ final class PlanetAutoTest {
     private static File outDir;
     private static FileWriter log;
     private static String pendingName;
+    private static Vec3 target;
+    private static double targetGround;
 
     private PlanetAutoTest() {}
 
@@ -62,17 +64,47 @@ final class PlanetAutoTest {
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.setActive(true);
         }
+        if (PlanetClient.active && mc.player != null) aim(mc);
     }
 
     static double scriptedSpeed() { return Math.max(5.0, alt / 2.0); }
 
-    static Vec3 scriptedPosition(double groundRadius) {
+    /** Highest point found on a 100k-point Fibonacci sphere: the descent targets a mountain, not the sea. */
+    private static Vec3 targetDir() {
+        if (target == null) {
+            double best = -1e18; Vec3 bestDir = new Vec3(1, 0, 0);
+            int n = 100_000;
+            for (int i = 0; i < n; i++) {
+                double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
+                Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
+                double h = PlanetClient.TERRAIN.heightAt(d);
+                if (Math.abs(y) < 0.9 && h > best) { best = h; bestDir = d; }   // keep away from the poles (look vector is degenerate there)
+            }
+            target = bestDir; targetGround = PlanetClient.PLANET.radius() + best;
+            System.out.printf("[planetary-autotest] target mountain height=%.0f m dir=%s%n", best, target);
+        }
+        return target;
+    }
+
+    private static double lookWeight() { return alt > 2e6 ? 0 : 0.7 * Math.sqrt(1 - alt / 2e6); }
+
+    /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
+    private static void aim(Minecraft mc) {
+        Vec3 d = targetDir();
+        Vec3 tangent = d.cross(new Vec3(0, 1, 0)).normalize();
+        Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
+        mc.player.setXRot((float) Math.toDegrees(-Math.asin(look.y())));
+        mc.player.setYRot((float) Math.toDegrees(Math.atan2(-look.x(), look.z())));
+    }
+
+    static Vec3 scriptedPosition() {
+        double groundRadius = (targetDir() != null) ? targetGround : 0;
         if (stop < STOPS.length && hold == 0) {
             t += 1.0 / 30.0;
             alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 2.0));
             if (alt <= STOPS[stop] * 1.0001) { alt = STOPS[stop]; hold = 1; }
         }
-        return new Vec3(groundRadius + alt, 0, 0);
+        return targetDir().mul(groundRadius + alt);
     }
 
     static void afterFrame(QuadtreeSelector.Result r, GlPlanetRenderer renderer, FrameStats fs, double selectMs) {
