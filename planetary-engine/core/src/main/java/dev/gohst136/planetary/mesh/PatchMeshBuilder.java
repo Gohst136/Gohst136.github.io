@@ -32,13 +32,12 @@ public final class PatchMeshBuilder {
 
         int skirtCount = 4 * n;
         int total = w * w + skirtCount;
-        float[] p = new float[total * 3], m = new float[total * 3], nr = new float[total * 3];
+        float[] p = new float[total * 3], m = new float[total * 3], hs = new float[total];
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             int idx = j * w + i;
             put(p, idx, pos[idx].sub(o));
             put(m, idx, morphed(pos, w, n, i, j).sub(o));
-            Vec3 d = pos[idx].normalize();
-            put(nr, idx, d); // radial normal; true slope normals are computed from heightmap in shader/LUT later
+            hs[idx] = (float) (pos[idx].length() - planet.radius());
         }
         int[] ring = new int[skirtCount];
         int r = 0;
@@ -51,7 +50,7 @@ public final class PatchMeshBuilder {
             Vec3 down = pos[src].normalize().mul(-skirt);
             put(p, dst, pos[src].add(down).sub(o));
             put(m, dst, morphed(pos, w, n, src % w, src / w).add(down).sub(o));
-            put(nr, dst, pos[src].normalize());
+            hs[dst] = hs[src];
         }
         int[] idx = new int[(n * n * 6) + skirtCount * 6];
         int t = 0;
@@ -64,7 +63,7 @@ public final class PatchMeshBuilder {
             int sa = w * w + s, sb = w * w + (s + 1) % skirtCount;
             idx[t++] = a; idx[t++] = sa; idx[t++] = b; idx[t++] = b; idx[t++] = sa; idx[t++] = sb;
         }
-        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, nr, idx, n);
+        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, hs, idx, n);
     }
 
     /** Position this vertex takes in the 2x coarser grid (odd indices collapse onto neighbours). */

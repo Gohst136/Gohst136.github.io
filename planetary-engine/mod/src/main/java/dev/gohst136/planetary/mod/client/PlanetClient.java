@@ -1,0 +1,172 @@
+package dev.gohst136.planetary.mod.client;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import dev.gohst136.planetary.lod.CameraView;
+import dev.gohst136.planetary.lod.QuadtreeSelector;
+import dev.gohst136.planetary.math.Vec3;
+import dev.gohst136.planetary.mesh.PatchMeshBuilder;
+import dev.gohst136.planetary.planet.PlanetDefinition;
+import dev.gohst136.planetary.telemetry.FrameStats;
+import dev.gohst136.planetary.terrain.ProceduralTerrain;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.Input;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
+import org.joml.Matrix4f;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Phase 2 test harness: a detached free-flight camera over one procedural planet.
+ * Toggle with P. While active, vanilla player movement is zeroed (look still works), the camera
+ * moves with W/A/S/D/Space/Shift at a speed proportional to altitude, and the planet is drawn at
+ * RenderLevelStageEvent.AFTER_SKY followed by a depth clear so vanilla geometry still renders.
+ * Everything here runs on the client render/main thread (selector and GL cache are single-owner).
+ */
+@EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
+public final class PlanetClient {
+    static final double FAR = 1.0e9;
+    private static final double NEAR = 0.1;
+
+    static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
+    static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
+
+    private static final PlanetDefinition PLANET = PlanetDefinition.earthlike(20240601L);
+    private static final ProceduralTerrain TERRAIN = new ProceduralTerrain(PLANET);
+
+    static boolean active;
+    static Vec3 pos = Vec3.ZERO;
+    private static double speed;
+    private static long lastNanos;
+    private static QuadtreeSelector selector;
+    private static GlPlanetRenderer renderer;
+    private static QuadtreeSelector.Result lastResult;
+    private static double selectMs;
+    private static final FrameStats FRAMES = new FrameStats(600);
+
+    private PlanetClient() {}
+
+    @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
+    public static final class ModBus {
+        @SubscribeEvent
+        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(BOOST); }
+    }
+
+    @SubscribeEvent
+    public static void tick(ClientTickEvent.Post e) {
+        Minecraft mc = Minecraft.getInstance();
+        PlanetAutoTest.tick(mc);
+        while (TOGGLE.consumeClick()) {
+            if (mc.player == null) continue;
+            setActive(!active);
+        }
+    }
+
+    static void setActive(boolean on) {
+        Minecraft mc = Minecraft.getInstance();
+        active = on;
+        {
+            if (active) {
+                pos = new Vec3(PLANET.radius() + 20_000_000.0, 0, 0);       // 20,000 km above the surface
+                mc.player.setYRot(90f);                                    // yaw 90 looks along -X, at the planet
+                mc.player.setXRot(0f);
+                lastNanos = System.nanoTime();
+                if (selector == null) {
+                    selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
+                    renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN));
+                }
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void input(MovementInputUpdateEvent e) {
+        if (!active) return;
+        Input in = e.getInput();
+        in.forwardImpulse = 0; in.leftImpulse = 0;
+        in.up = in.down = in.left = in.right = in.jumping = in.shiftKeyDown = false;
+    }
+
+    @SubscribeEvent
+    public static void render(RenderLevelStageEvent e) {
+        if (!active || e.getStage() != RenderLevelStageEvent.Stage.AFTER_SKY || selector == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        long now = System.nanoTime();
+        double dt = Math.min(0.1, (now - lastNanos) / 1e9);
+        lastNanos = now;
+        FRAMES.record(dt * 1000.0);
+
+        var cam = e.getCamera();
+        var look = cam.getLookVector();
+        var left = cam.getLeftVector();
+        Vec3 fwd = new Vec3(look.x(), look.y(), look.z());
+        Vec3 lft = new Vec3(left.x(), left.y(), left.z());
+        Vec3 radial = pos.normalize();
+        double ground = PLANET.radius() + TERRAIN.heightAt(radial);
+        double alt = Math.max(1.0, pos.length() - ground);
+        speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
+
+        var o = mc.options;
+        Vec3 move = Vec3.ZERO;
+        if (o.keyUp.isDown()) move = move.add(fwd);
+        if (o.keyDown.isDown()) move = move.sub(fwd);
+        if (o.keyLeft.isDown()) move = move.add(lft);
+        if (o.keyRight.isDown()) move = move.sub(lft);
+        if (o.keyJump.isDown()) move = move.add(radial);
+        if (o.keyShift.isDown()) move = move.sub(radial);
+        if (move.length() > 0) pos = pos.add(move.normalize().mul(speed * dt));
+        if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(PLANET.radius() + TERRAIN.heightAt(new Vec3(1, 0, 0))); speed = PlanetAutoTest.scriptedSpeed(); }
+        // minimal terrain contact: never go below 2 m above the ground (swept collision comes in Phase 8)
+        Vec3 nd = pos.normalize();
+        double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
+        if (pos.length() < minR) pos = nd.mul(minR);
+
+        Matrix4f projIn = e.getProjectionMatrix();
+        double tanHalf = 1.0 / projIn.m11();
+        double fovY = 2.0 * Math.atan(tanHalf);
+        int w = mc.getWindow().getWidth(), h = mc.getWindow().getHeight();
+        double aspect = (double) w / h;
+        var up = cam.getUpVector();
+        CameraView view = new CameraView(pos, fwd, new Vec3(up.x(), up.y(), up.z()), fovY, h, w, speed);
+
+        long t0 = System.nanoTime();
+        lastResult = selector.select(view);
+        selectMs = (System.nanoTime() - t0) / 1e6;
+
+        Matrix4f proj = new Matrix4f().perspective((float) fovY, (float) aspect, (float) NEAR, (float) FAR);
+        Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
+        float[] sun = {0.6f, 0.5f, 0.62f};
+        float sl = (float) Math.sqrt(sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]);
+        sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
+        PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
+        renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
+        RenderSystem.clear(256, Minecraft.ON_OSX);   // let vanilla geometry draw over the planet
+    }
+
+    @SubscribeEvent
+    public static void overlay(RenderGuiEvent.Post e) {
+        if (!active || lastResult == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        double alt = pos.length() - PLANET.radius();
+        List<String> lines = new ArrayList<>();
+        lines.add(String.format("PLANET  alt=%.1f km  speed=%.1f km/s", alt / 1000.0, speed / 1000.0));
+        lines.add("patches=" + lastResult.patches.size() + " maxLevel=" + lastResult.maxLevel
+                + " culled(h/f)=" + lastResult.culledHorizon + "/" + lastResult.culledFrustum);
+        lines.add(String.format("split/merge=%d/%d  thresholdPx=%.2f  select=%.2fms", lastResult.splits, lastResult.merges,
+                lastResult.effectiveThreshold, selectMs));
+        lines.add(String.format("frame ms avg=%.1f med=%.1f p95=%.1f p99=%.1f worst=%.1f", FRAMES.average(), FRAMES.median(),
+                FRAMES.p95(), FRAMES.p99(), FRAMES.worst()));
+        lines.addAll(renderer.stats());
+        int y = 4;
+        for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }
+    }
+}

@@ -1,15 +1,20 @@
 plugins {
     id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.78'
+    id 'net.neoforged.moddev' version '2.0.148'
 }
+evaluationDependsOn(':core')
 java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
 repositories { mavenCentral() }
 
 neoForge {
     version = project.neo_version
     runs {
-        client { client(); systemProperty 'neoforge.enabledGameTestNamespaces', 'planetary' }
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'planetary'
+            if (project.hasProperty('autotest')) { systemProperty 'planetary.autotest', 'true'; programArguments.addAll('--width', '640', '--height', '360') }
+        }
     }
-    mods { planetary { sourceSet sourceSets.main } }
+    mods { planetary { sourceSet sourceSets.main; sourceSet project(':core').sourceSets.main } }
 }
 dependencies { implementation project(':core') }
