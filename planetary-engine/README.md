@@ -65,3 +65,8 @@ These counts say the *selection* is cheap; they say nothing about GPU cost, stre
 6. Add neighbour-level (2:1) constraint across faces. (Bounds done.)
 
 Run tests: `cd planetary-engine && gradle :core:test`
+
+## 7. Automated test loop
+`watch-autotest.bat` (on the dev PC) polls origin, runs `run-autotest.bat` for every new non-results commit and pushes
+`autotest-results/` (with `tested-commit.txt`). The cloud session polls for fresh results and continues from them.
+Real-time TRANSIT line in `stats.txt`: `fallbackFrames`/`holeFrames` are the pop-in proxies (target: 0 holes).
