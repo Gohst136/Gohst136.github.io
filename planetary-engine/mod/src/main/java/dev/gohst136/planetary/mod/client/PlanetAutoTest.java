@@ -39,6 +39,7 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished;
+    private static long lastTransitNanos;
     private static boolean transit;          // phase 2: continuous descent without holds
     private static int tFrames, tFallbackFrames, tHoleFrames, tMaxFallback, tMaxHoles, tMerges;
     private static FrameStats tStats = new FrameStats(5000);
@@ -109,8 +110,12 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         double groundRadius = (targetDir() != null) ? targetGround : 0;
         if (transit) {
-            t += 1.0 / 30.0;
-            alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 1.0));   // twice as fast, no holds
+            // REAL time (clamped), so streaming gets exactly as long as in a genuine flight
+            long now = System.nanoTime();
+            double dt = lastTransitNanos == 0 ? 0 : Math.min(0.1, (now - lastTransitNanos) / 1e9);
+            lastTransitNanos = now;
+            t += dt;
+            alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 1.0));   // alt/s: v = alt per second, no holds
         } else if (stop < STOPS.length && hold == 0) {
             t += 1.0 / 30.0;
             alt = Math.max(STOPS[STOPS.length - 1], STOPS[0] * Math.exp(-t / 2.0));
@@ -130,7 +135,7 @@ final class PlanetAutoTest {
             tMaxFallback = Math.max(tMaxFallback, fb); tMaxHoles = Math.max(tMaxHoles, ho);
             tMerges += r.merges;
             if (alt <= STOPS[STOPS.length - 1] && tFrames > 30) {
-                String line = String.format("TRANSIT (continuous, 2x speed, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f",
+                String line = String.format("TRANSIT (continuous, real time, v=alt/s, no holds): frames=%d fallbackFrames=%d (max %d patches) holeFrames=%d (max %d) merges=%d frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f",
                         tFrames, tFallbackFrames, tMaxFallback, tHoleFrames, tMaxHoles, tMerges, tStats.average(), tStats.p95(), tStats.p99(), tStats.worst());
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.close(); } catch (IOException ignored) {}

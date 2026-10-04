@@ -57,16 +57,18 @@ final class PlanetShaders {
                 // faceted normals are only meaningful (and float-precise) close to the camera
                 float w = 1.0 - smoothstep(2.0e3, 3.0e4, length(vRel));
                 n = normalize(mix(up, n, w));
-                // scale reference: faint 1 m lattice and stronger 16 m lattice, faded out when a pixel spans a cell
-                vec3 fw = fwidth(vLocal);
-                float fp = max(fw.x, max(fw.y, fw.z));
-                vec3 f1 = abs(fract(vLocal) - 0.5);
-                float l1 = (1.0 - smoothstep(0.0, 0.04 + fp, 0.5 - max(f1.x, max(f1.y, f1.z)))) * (1.0 - smoothstep(0.25, 0.6, fp));
-                vec3 p16 = vLocal / 16.0;
-                vec3 f16 = abs(fract(p16) - 0.5);
-                float l16 = (1.0 - smoothstep(0.0, 0.03 + fp / 16.0, 0.5 - max(f16.x, max(f16.y, f16.z)))) * (1.0 - smoothstep(0.25, 0.6, fp / 16.0));
-                vec3 cell = floor(vLocal);
-                float jitter = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453) * (1.0 - smoothstep(0.1, 0.4, fp));
+                // scale reference: 1 m and 16 m lattice drawn on the two axes most parallel to the surface
+                // (a full 3D lattice cuts near-flat ground at grazing angles and smears into huge bands)
+                vec3 ua = abs(up);
+                vec2 g = (ua.y >= ua.x && ua.y >= ua.z) ? vLocal.xz : ((ua.x >= ua.z) ? vLocal.yz : vLocal.xy);
+                vec2 fw = fwidth(g);
+                float fp = max(fw.x, fw.y);
+                vec2 f1 = abs(fract(g) - 0.5);
+                float l1 = (1.0 - smoothstep(0.0, 0.04 + fp, 0.5 - max(f1.x, f1.y))) * (1.0 - smoothstep(0.25, 0.6, fp));
+                vec2 g16 = g / 16.0;
+                vec2 f16 = abs(fract(g16) - 0.5);
+                float l16 = (1.0 - smoothstep(0.0, 0.03 + fp / 16.0, 0.5 - max(f16.x, f16.y))) * (1.0 - smoothstep(0.25, 0.6, fp / 16.0));
+                float jitter = fract(sin(dot(floor(g), vec2(12.9898, 78.233))) * 43758.5453) * (1.0 - smoothstep(0.1, 0.4, fp));
                 col *= 0.92 + 0.16 * jitter;
                 col = mix(col, col * 0.55, 0.35 * l1 + 0.5 * l16);
                 float diff = max(dot(n, uSun), 0.0);
