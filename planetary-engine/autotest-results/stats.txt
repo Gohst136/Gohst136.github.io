@@ -1,0 +1,9 @@
+GPU: NVIDIA GeForce RTX 2060/PCIe/SSE2 | GL 4.6.0 NVIDIA 610.88
+alt=20000000m patches=5 maxLevel=0 splits=0 merges=0 select=0,08ms frame avg=11,7 p95=21,3 p99=100,0 worst=100,0 [resident=5 vram=0MB/192MB, drawn=5 inFlight=0 req/frame=0, built=5 uploaded=5]
+alt=2000000m patches=8 maxLevel=1 splits=0 merges=0 select=0,06ms frame avg=9,4 p95=15,9 p99=22,3 worst=100,0 [resident=9 vram=0MB/192MB, drawn=8 inFlight=0 req/frame=0, built=9 uploaded=9]
+alt=200000m patches=16 maxLevel=5 splits=0 merges=0 select=0,05ms frame avg=9,1 p95=13,6 p99=21,3 worst=100,0 [resident=73 vram=4MB/192MB, drawn=16 inFlight=0 req/frame=0, built=73 uploaded=73]
+alt=20000m patches=8 maxLevel=8 splits=0 merges=0 select=0,07ms frame avg=8,9 p95=13,3 p99=19,7 worst=100,0 [resident=121 vram=7MB/192MB, drawn=8 inFlight=0 req/frame=0, built=121 uploaded=121]
+alt=2000m patches=12 maxLevel=12 splits=0 merges=0 select=0,12ms frame avg=8,7 p95=12,6 p99=18,6 worst=26,0 [resident=177 vram=10MB/192MB, drawn=12 inFlight=0 req/frame=0, built=177 uploaded=177]
+alt=200m patches=12 maxLevel=15 splits=0 merges=0 select=0,12ms frame avg=8,7 p95=12,4 p99=18,6 worst=26,0 [resident=201 vram=11MB/192MB, drawn=12 inFlight=0 req/frame=0, built=201 uploaded=201]
+alt=20m patches=8 maxLevel=18 splits=0 merges=0 select=0,14ms frame avg=8,7 p95=12,4 p99=16,7 worst=21,7 [resident=225 vram=13MB/192MB, drawn=8 inFlight=0 req/frame=0, built=225 uploaded=225]
+alt=2m patches=4 maxLevel=19 splits=0 merges=0 select=0,14ms frame avg=8,7 p95=12,8 p99=18,1 worst=39,5 [resident=233 vram=13MB/192MB, drawn=4 inFlight=0 req/frame=0, built=233 uploaded=233]
