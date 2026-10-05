@@ -477,7 +477,7 @@ public final class PlanetClient {
             if (pos.length() < minR) { pos = nd.mul(minR); if (inertial) posI = toI(pos); }
             if (inertial) { fwd = toE(fwd); lft = toE(lft); vanillaUp = toE(vanillaUp); }       // from here on everything is in E axes
             handoff(mc, "earth", pos, fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
-        } else {
+        } else if (bubbleLive) {
             // bubble: the camera IS the real player's camera, mapped into the body's frame (and from there into the render frame E)
             if (PlanetAutoTest.enabled()) { PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); } else speed = 0;   // scripted descent keeps advancing; the real player is driven from its altitude
             var cp = cam.getPosition();
