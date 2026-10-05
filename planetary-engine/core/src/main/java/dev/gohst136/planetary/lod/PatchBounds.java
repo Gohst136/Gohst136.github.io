@@ -22,13 +22,13 @@ public record PatchBounds(Vec3 center, double radius, Vec3 centerDir, double ang
         double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
         final int n = 8;
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
-            double h = terrain.heightAt(CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n));
+            double h = terrain.heightAt(CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n), edge / 32.0);   // the resolution of the patch's own mesh: far cheaper than full detail at coarse levels
             lo = Math.min(lo, h); hi = Math.max(hi, h);
         }
         // worst-case chord distance to nearest sample: half the cell diagonal, with 1.5x slack for
         // the equal-angle warp and chord-vs-arc differences
         double sampleSpacing = 1.5 * (Math.PI / 2.0) / (double) (1L << k.level()) / n;
-        double margin = terrain.slopeBound() * sampleSpacing * Math.sqrt(0.5);
+        double margin = terrain.slopeBound() * sampleSpacing * Math.sqrt(0.5) + 2.0 * terrain.unresolvedDetail(edge / 32.0);   // + detail the patch's mesh cannot show but the surface has
         double rLo = Math.max(p.minRadius(), p.radius() + lo - margin), rHi = Math.min(p.maxRadius(), p.radius() + hi + margin);
         Vec3 c0 = dir.mul((rLo + rHi) * 0.5);
         c = c0;

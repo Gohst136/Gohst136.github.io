@@ -84,8 +84,8 @@ final class PlanetAutoTest {
             Vec3 toSunFromMoon = sun.mul(1.0);                               // the sun is ~1 AU away: the direction is the same everywhere
             return new Vec3[]{moon.add(toSunFromMoon.mul(4.0e6)), toSunFromMoon.mul(-1)};
         }
-        // Earth (and, if lucky, the Moon beside it) seen from 1.2 million km on the sunward side: a fully lit disc
-        return new Vec3[]{sun.mul(1.2e9), sun.mul(-1)};
+        // Earth (and, if lucky, the Moon beside it) seen from 100,000 km on the sunward side: a fully lit disc
+        return new Vec3[]{sun.mul(1.0e8), sun.mul(-1)};
     }
     private static int landingTick;
     private static boolean clearPending;
@@ -300,7 +300,11 @@ final class PlanetAutoTest {
             if (clearPending) { renderer.clearCache(); clearPending = false; }
             lapFrames++;
             lapStats.record(fs.last());
-            if (!lapShot && lapAngle >= Math.PI && pendingName == null) { pendingName = "lap_mid.png"; lapShot = true; }
+            if (!lapShot && lapAngle > 0.4 && pendingName == null) {                    // a shot over the day side
+                float[] sd = PlanetClient.sunDirE();
+                Vec3 pp = rotateAbout(lapStartDir, lapAxis, lapAngle);
+                if (pp.x() * sd[0] + pp.y() * sd[1] + pp.z() * sd[2] > 0.6 || lapAngle > 5.5) { pendingName = "lap_mid.png"; lapShot = true; }
+            }
             int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
             if (fb > 0) lapFallbackFrames++;
             if (ho > 0) lapHoleFrames++;
