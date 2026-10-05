@@ -95,3 +95,16 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
   back to Earth: transit 0 holes, stream latency p50 13 ms.
 - Known limits: Moon craters deeper than ~450 m are not representable; the real chunks are lit by vanilla's day cycle, not by the star system clock; the Moon sky is the planet
   pass (stars + sun disc), vanilla sky/clouds are hidden; no Earth-sky transition on the Moon (Earth is drawn by the home renderer).
+
+## 12. Planetary clouds
+- Drawn inside the analytic atmosphere pass (`PlanetShaders`): a thin shell at 4 km altitude, ray-intersected per pixel, density = domain-warped value-noise fbm
+  (5-9 octaves, more when closer), latitude bands (wet equator / dry subtropics), drift from the simulation clock.
+- Lighting: sun elevation at the cloud point, one-tap self-shadow towards the sun, reddened light near the terminator. Clouds hide ground and stars behind them.
+- Not volumetric: no cloud shadows on the ground, no flying through clouds (vanilla clouds still show inside the bubble). Toggle: `GlPlanetRenderer.cloudsOn`.
+
+## 13. Persistence and edit sync (compiled, not yet exercised in the benchmark)
+- `PlanetPersistence`: `planetary_edits.bin` in the world folder (varint format of `ModificationDatabase`, atomic write, saved on level save and server stop,
+  only when the database changed; a corrupt file is logged and ignored, never overwritten blindly).
+- `PlanetSync` (NeoForge payloads, optional so vanilla clients can still join): full snapshot on join, then batches of changed columns (<= 4096 per tick).
+  Dedicated server only; singleplayer shares the same database instance. Still missing: a dedicated-server test run, per-player interest filtering, block-level sync
+  (the vanilla chunk protocol carries blocks inside the bubble), and `PlanetStatePacket` use for out-of-bubble players.

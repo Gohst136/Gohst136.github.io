@@ -58,6 +58,13 @@ public final class ModificationDatabase {
         synchronized (r) { return r.columnTop.get(colKey(x, z)); }
     }
 
+    /** Replaces the content with {@code other}'s (used when loading a saved world into the shared instance). */
+    public void replaceWith(ModificationDatabase other) {
+        regions.clear();
+        regions.putAll(other.regions);
+        version++;
+    }
+
     public long version() { return version; }
     public int regionCount() { return regions.size(); }
 

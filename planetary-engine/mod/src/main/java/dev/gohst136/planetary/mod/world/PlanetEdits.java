@@ -18,7 +18,7 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 public final class PlanetEdits {
     private PlanetEdits() {}
 
-    /** The world's edits (one planet per world for now). Not persisted yet: lost on restart (see docs). */
+    /** The world's edits (one planet per world for now). Persisted by {@link PlanetPersistence}, mirrored to clients by {@link PlanetSync}. */
     public static final ModificationDatabase DB = new ModificationDatabase();
 
     @SubscribeEvent
@@ -41,7 +41,9 @@ public final class PlanetEdits {
         level.getServer().execute(() -> {
             BlockState now = level.getBlockState(new BlockPos(x, y, z));
             DB.setBlock(x, y, z, (short) (Block.getId(now) & 0xffff));
-            DB.setColumnTop(x, z, groundTop(level, x, z));
+            int top = groundTop(level, x, z);
+            DB.setColumnTop(x, z, top);
+            PlanetSync.queue(x, z, top);
         });
     }
 
