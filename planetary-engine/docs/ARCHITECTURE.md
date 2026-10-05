@@ -151,5 +151,12 @@ drawn with the game's own block atlas, lightmap and biome colours.
 - `SkinStyleImpl` takes sprites from the game's block models and tints from `Biome.getGrassColor/getWaterColor` (via the same biome pick as the generator). `GlPlanetRenderer` draws levels
   15-18 (cells 8 .. 1 block) with its own shader that samples the block atlas and the game's lightmap like the chunk shader does; coarser levels stay smooth meshes. The selector stops at level 18.
 - Measured by the benchmark: `SKINDIFF` compares a screenshot with real chunks to one with the skin in their place (same pose), plus `diff_amplified.png`.
-- Not done yet: vanilla ambient occlusion and per-block texture variants at 1-block cells, translucency of water over the sea floor, trees/plants (the generator still places vanilla features
-  randomly; they will be replaced by a deterministic placement shared with the skin), calibrating the smooth planet's colours and lighting to the skin, dithered cross-fade between skin levels.
+- **Measured (benchmark, 3440x1440):** real chunks vs skin at the landing pose: mean |difference| 5 / 7 / 10 of 255 (R/G/B), 0.1% of pixels off by more than 48, skin brighter by 1.5 luminance.
+  What it took: (1) vanilla's ambient occlusion (every top face next to a higher column darkens: real rough terrain averages ~0.63-0.84 brightness; without AO the skin was 1.6x too bright);
+  (2) the same AO on the walls, block by block at 1-block cells; (3) for coarse cells one unbiased AO sample taken on the real 1-block terrain (AO from the coarse grid itself would be far too dark), fading
+  with level so the skin meets the smooth planet without a step; (4) the walls' brightness calibrated by measurement (`SkinAoStatsTest`).
+- **Light.** Minecraft does not light terrain by the sun's direction: top faces get the sky-light colour of the moment. `render/VanillaDaylight` has that as closed formulas (tested against the lightmap
+  measured in the game: noon = 251). The smooth planet near the ground (< 50 km, blended to the sun-direction shading in space) uses them in its shader; the game's day clock is driven from the sun
+  at the point below the camera also in free flight (`syncDayTimeFree`), so the skin's lightmap and the smooth planet agree. Remaining: palette of the smooth planet vs the block textures' averages.
+- Not done yet: per-block texture variants (random rotations) at 1-block cells, translucency of water over the sea floor, trees/plants (the generator still places vanilla features
+  randomly; they will be replaced by a deterministic placement shared with the skin), dithered cross-fade between skin levels.
