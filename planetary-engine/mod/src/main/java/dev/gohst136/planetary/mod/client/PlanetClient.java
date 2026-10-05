@@ -197,7 +197,15 @@ public final class PlanetClient {
      * the real chunks appear on top of it.
      */
     private static void handoff(Minecraft mc, Vec3 radial, Vec3 fwd, double alt) {
-        if (anchor == null || (vanilla == null && !realWorld) || mc.getSingleplayerServer() == null || mc.player == null) return;
+        if (!realWorld && vanilla == null) return;
+        if (mc.getSingleplayerServer() == null || mc.player == null) return;
+        // manual flight: the landing site is wherever the player sinks towards (not near a cube edge, where the vanilla plane has a gap)
+        if (!PlanetAutoTest.enabled() && realWorld && alt < 4000 && !bubbleLive && !preloaded
+                && (anchor == null || PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor)))) > 1500.0)
+                && dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(radial) < 0.97) {
+            anchor = radial;
+        }
+        if (anchor == null) return;
         frameCount++;
         double dist = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
         if (!preloaded && alt < 4000 && dist < 30000) {
@@ -479,6 +487,7 @@ public final class PlanetClient {
                 FRAMES.p95(), FRAMES.p99(), FRAMES.worst()));
         lines.addAll(renderer.stats());
         if (BODIES != null) for (var in : BODIES.instances()) lines.add(in.def.id() + String.format(": %d patches, %.0f px radius", in.last == null ? 0 : in.last.patches.size(), in.angularRadiusPx));
+        if (realWorld) lines.add(bubbleLive ? "REAL WORLD (normal Minecraft controls; fly above 800 m to leave)" : "sink below 300 m to land in the real world, P to leave planet mode");
         lines.add(String.format("sim time %.1f h (x%.0f)  frame: %s", simTime / 3600.0, timeScale, inertial ? "inertial (space)" : "co-rotating with the planet"));
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }

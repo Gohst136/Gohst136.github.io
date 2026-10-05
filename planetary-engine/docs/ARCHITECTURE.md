@@ -70,3 +70,16 @@ clearance / slope bound), bisection on the crossing, coarse terrain cell size th
 costs a few thousand terrain samples at most. Tested: a straight move through the planet stops at the surface (bounded sample count),
 high-altitude moves are not blocked, 20 km low-altitude moves never end inside terrain (18/300 blocked by mountains).
 Not done yet: the real player's collision at speed inside the bubble (vanilla physics apply there), vehicles, entity collision.
+
+## 10. Several bodies, speed, manual landing (status)
+- `system/StarSystem`: Keplerian orbits (analytic), spin, tilt, body-fixed frames, sphere-of-influence frame selection; tested
+  (periods, closure, 1e-4 m frame round trips at 1.5e11 m).
+- `terrain/CraterTerrain`: airless bodies (maria, power-law craters 2 m .. 280 km, regolith), used for the Moon and a rust-coloured second planet "Ares".
+  `mod/client/Bodies` renders them with their own selectors / mesh caches; sun disc, day/night from the simulation clock, bodies occlude stars.
+- Benchmark results (RTX 2060): lap at 4,000 km/s, 50 km above ground, cold cache: 10.1 s, 0 hole frames, p99 21-30 ms, patch-weighted
+  fallback share 21 % (coarser parent shown for a few frames while children stream); Moon descent 2,000 km -> 2 m with 0 holes.
+- Speed levers: curved (orbit-like) prediction, priority queue by time-to-visibility, up to 8 mesh workers, up to 13x detail relaxation at speed.
+- Manual play: P toggles planet mode; below 300 m the real-world handoff happens automatically at the spot you sink towards
+  (singleplayer, planet world preset). Inertial camera frame in space (switches at 3 / 2.2 planet radii).
+- Not done: landing on the Moon/Ares with real blocks (no chunk generator for them yet), spacecraft, multiplayer protocol,
+  GPU-driven culling, ray tracing.
