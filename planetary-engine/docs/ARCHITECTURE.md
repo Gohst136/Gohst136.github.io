@@ -121,3 +121,17 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
   leapfrog step with thrust. Unit test: 10 revolutions of a 400 km circular orbit keep the radius within 50 m; Moon/Sun perturbation is tidal-small.
 - In game: key N (in space, inertial frame) switches to Newtonian flight: WASD/Space/Shift thrust (50 m/s^2, Ctrl x20), gravity bends the path, swept collision stops at the
   ground (inelastic), the HUD shows speed and Pe/Ap. Compiled, NOT exercised by the benchmark yet; no atmosphere drag, no fuel, no vehicle entity/model.
+
+## 16. LOD continuity, bubble chart, free-flight camera (user feedback round)
+- **Geomorph = the parent.** A child patch's morph target is now the PARENT's geometry and colour (even vertices re-sampled with the parent's cell, odd ones interpolated),
+  not the child's own coarser grid: before, children differed from the parent they replaced by up to 38 m in height and a full colour step (octave fade, river tint and water flag
+  depend on the cell size), which showed as a pop on every LOD switch. Test `GeomorphContinuityTest`: morphed child == parent within 4 cm / 0 colour. Colours are 8 bit, vertex 32 bytes.
+- **Bubble chart.** The vanilla plane is not isometric to the sphere (up to ~20% stretch, anisotropic, worst near cube edges), and the generator evaluates the terrain at
+  `PlaneUnwrap.inverse(x, z)`. A 1:1 tangent plane drifted from the real terrain: median 20 m at 200 m, 85 m at 1 km, 265 m at 3 km from the anchor (680 m near cube edges), i.e. the planet backdrop and the
+  real chunks showed different terrain with height differences up to 24-100 m. `BubbleFrame` now uses the exact first-order chart (Jacobian of the generator's mapping); the backdrop is drawn through
+  its inverse so it coincides with the real chunks, culling uses a widened frustum. Test `BubbleMismatchTest`: drift at 3 km < 1 m everywhere, including 10 km from a cube edge.
+- **Landing next to cube edges.** Anchors were refused within 300 km of a cube edge (|u| > 0.97), so there the player never got real chunks (stayed in the planet mesh). The chart makes this safe up to |u| < 0.998.
+- **Fly camera.** Free flight is a 6-DoF camera (`camera/FlyCamera`, tested): mouse yaw/pitch about the camera's own axes, Z/C roll, no pitch clamp, no auto-level; orientation is kept in the current
+  frame's axes so it never jumps when the frame switches (inertial <-> planet-fixed <-> Moon-fixed). The vanilla camera is used only inside the bubble. The benchmark still scripts the vanilla camera (unchanged path).
+- **Not yet done:** 22% of land is above 1000 m (12% above 2000 m, 4% above 4000 m), where the real world's vertical map compresses heights (build limit Y 1280): the planet is
+  more mountainous than Earth and the real chunks flatten its high peaks. Candidates: lower the relief and/or raise the dimension height.

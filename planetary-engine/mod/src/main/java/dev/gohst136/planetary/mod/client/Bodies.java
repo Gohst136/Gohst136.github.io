@@ -80,8 +80,17 @@ final class Bodies {
     /** Unit direction towards the star, seen from the home planet, in E axes. */
     Vec3 sunDirE(double t) { return sys.systemToBody(home, t, sys.position(home, t).mul(-1.0)).normalize(); }
 
+    /** Culling widening for the Moon while the bubble is on it (its terrain is drawn warped, see BubbleFrame). */
+    double moonCullScale = 1.0;
+
     void draw(double t, Vec3 camE, Vec3 fwdE, Vec3 upE, double fovY, int viewportH, int viewportW, double speed,
               Matrix4f viewE, Matrix4f proj) {
+        draw(t, camE, fwdE, upE, fovY, viewportH, viewportW, speed, viewE, null, proj);
+    }
+
+    /** @param warpE if not null, the body the bubble is on (the Moon) is drawn with this view (backdrop warped onto the vanilla chart) instead of viewE. */
+    void draw(double t, Vec3 camE, Vec3 fwdE, Vec3 upE, double fovY, int viewportH, int viewportW, double speed,
+              Matrix4f viewE, Matrix4f warpE, Matrix4f proj) {
         // far bodies first: they must not be overdrawn by near ones (depth is shared, so order only matters for blending)
         for (Instance in : instances) {
             String b = in.def.id();
@@ -93,7 +102,7 @@ final class Bodies {
             if (in.angularRadiusPx < 0.4) { in.last = null; continue; }
             Vec3 fwdB = bFromE(b, t, fwdE), upB = bFromE(b, t, upE);
             Vec3 sunB = bFromE(b, t, sys.systemToBody(home, t, sys.position(b, t).mul(-1.0)).normalize());   // towards the star, from the body
-            CameraView cv = new CameraView(camB, fwdB, upB, fovY, viewportH, viewportW, speed);
+            CameraView cv = new CameraView(camB, fwdB, upB, fovY, viewportH, viewportW, speed, b.equals("moon") ? moonCullScale : 1.0);
             in.last = in.selector.select(cv);
             // view': B-frame vectors -> E-frame vectors -> camera
             Vec3 ex = eFromB(b, t, new Vec3(1, 0, 0)), ey = eFromB(b, t, new Vec3(0, 1, 0)), ez = eFromB(b, t, new Vec3(0, 0, 1));
@@ -102,7 +111,7 @@ final class Bodies {
                     (float) ey.x(), (float) ey.y(), (float) ey.z(), 0f,
                     (float) ez.x(), (float) ez.y(), (float) ez.z(), 0f,
                     0f, 0f, 0f, 1f);
-            Matrix4f viewB = new Matrix4f(viewE).mul(rot);
+            Matrix4f viewB = new Matrix4f(warpE != null && b.equals("moon") ? warpE : viewE).mul(rot);
             float[] sun = {(float) sunB.x(), (float) sunB.y(), (float) sunB.z()};
             in.renderer.drawFrame(in.last.patches, new double[]{camB.x(), camB.y(), camB.z()}, viewB, proj, sun);
         }

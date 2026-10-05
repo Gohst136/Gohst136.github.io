@@ -279,7 +279,7 @@ public final class PlanetClient {
         boolean wrongBody = !bubbleBody.equals(body);
         if (alt < 4000 && !bubbleLive && !preloaded && realWorld
                 && (wrongBody || anchor == null || (!PlanetAutoTest.enabled() && R * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor)))) > 1500.0))
-                && dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(radial) < 0.97) {
+                && dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(radial) < 0.998) {
             anchor = radial; bubbleBody = body;
         }
         if (anchor == null || !bubbleBody.equals(body)) return;
@@ -638,7 +638,15 @@ public final class PlanetClient {
                     (float) rE.z(), (float) uE.z(), (float) -fE.z(), 0f, 0f, 0f, 0f, 1f);
             camUp = uE;
         }
-        CameraView view = new CameraView(pos, fwd, camUp, fovY, h, w, speed);
+        // in the bubble the backdrop is drawn warped onto the vanilla chart (see BubbleFrame): the terrain pass gets that view, culling a widened frustum
+        Matrix4f terrainRot = viewRot;
+        double cullScale = 1.0;
+        if (bubbleLive) {
+            terrainRot = new Matrix4f(e.getModelViewMatrix()).mul(bubble.warpTransform());
+            if (eToMoon != null) terrainRot.mul(eToMoon);
+            cullScale = Math.min(2.0, 1.15 * bubble.stretch());
+        }
+        CameraView view = new CameraView(pos, fwd, camUp, fovY, h, w, speed, cullScale);
 
         long t0 = System.nanoTime();
         lastResult = selector.select(view);
@@ -655,7 +663,7 @@ public final class PlanetClient {
                 Vec3 pp = Vec3.predictAround(pos, velocity, horizon);         // follow the planet's curve, not the tangent
                 double predMinR = PLANET.radius() + 2.0;
                 if (pp.length() < predMinR) pp = pp.normalize().mul(predMinR);
-                var pv = new CameraView(pp, fwd, camUp, fovY, h, w, speed);
+                var pv = new CameraView(pp, fwd, camUp, fovY, h, w, speed, cullScale);
                 var res = (i == 0 ? predictNear : predictFar).select(pv);
                 List<dev.gohst136.planetary.lod.PatchKey> keys = new ArrayList<>(res.patches.size());
                 for (var sp : res.patches) keys.add(sp.key());
@@ -670,8 +678,10 @@ public final class PlanetClient {
         if (planetOff) RenderSystem.clearColor(1f, 0f, 1f, 1f); else RenderSystem.clearColor(0f, 0f, 0f, 1f);   // magenta backdrop in the diagnostic shot
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
         BODIES.occluders(simTime, pos, GlPlanetRenderer.occC, GlPlanetRenderer.occR);
-        if (!planetOff) BODIES.draw(simTime, pos, fwd, camUp, fovY, h, w, speed, viewRot, proj);
-        if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
+        boolean moonBubble = bubbleLive && bubble.body.equals("moon");
+        BODIES.moonCullScale = moonBubble ? cullScale : 1.0;
+        if (!planetOff) BODIES.draw(simTime, pos, fwd, camUp, fovY, h, w, speed, viewRot, moonBubble ? terrainRot : null, proj);
+        if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, moonBubble ? viewRot : terrainRot, proj, sun);
         if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
 

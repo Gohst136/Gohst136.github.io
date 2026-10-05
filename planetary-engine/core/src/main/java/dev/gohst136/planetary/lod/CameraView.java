@@ -7,7 +7,12 @@ import dev.gohst136.planetary.math.Vec3;
  * {@code speed} is the camera speed in m/s, used for velocity-aware detail.
  */
 public record CameraView(Vec3 position, Vec3 forward, Vec3 up, double fovYRadians,
-                         int viewportHeight, int viewportWidth, double speed) {
+                         int viewportHeight, int viewportWidth, double speed, double cullScale) {
+
+    /** Normal camera: the culling frustum equals the drawn one. */
+    public CameraView(Vec3 position, Vec3 forward, Vec3 up, double fovYRadians, int viewportHeight, int viewportWidth, double speed) {
+        this(position, forward, up, fovYRadians, viewportHeight, viewportWidth, speed, 1.0);
+    }
 
     /** Pixels per metre at distance 1 m: projected size = metres * pixelsPerUnitDistance / distance. */
     public double pixelsPerUnitDistance() {
@@ -19,7 +24,7 @@ public record CameraView(Vec3 position, Vec3 forward, Vec3 up, double fovYRadian
         Vec3 f = forward.normalize();
         Vec3 r = f.cross(up).normalize();
         Vec3 u = r.cross(f).normalize();
-        double tanY = Math.tan(fovYRadians / 2.0);
+        double tanY = Math.tan(fovYRadians / 2.0) * cullScale;       // >1 when the drawn view is a stretched chart of the planet frame (bubble)
         double tanX = tanY * viewportWidth / (double) viewportHeight;
         Vec3 rel = center.sub(position);
         double z = rel.dot(f), x = rel.dot(r), y = rel.dot(u);

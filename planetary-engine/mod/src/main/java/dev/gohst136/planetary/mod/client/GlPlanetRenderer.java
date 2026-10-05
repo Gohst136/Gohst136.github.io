@@ -183,6 +183,11 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     // ---- per-frame ---------------------------------------------------------------------------
 
     void drawFrame(List<SelectedPatch> selected, double[] cam, Matrix4f view, Matrix4f proj, float[] sun) {
+        drawFrame(selected, cam, view, view, proj, sun);
+    }
+
+    /** @param view rotation for the sky pass; @param terrainView for the patches (differs in the bubble: the backdrop is warped onto the vanilla chart). */
+    void drawFrame(List<SelectedPatch> selected, double[] cam, Matrix4f view, Matrix4f terrainView, Matrix4f proj, float[] sun) {
         frame++;
         prefetchLastFrame = 0;
         if (program < 0) initProgram();
@@ -217,7 +222,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         try (MemoryStack st = MemoryStack.stackPush()) {
             FloatBuffer fb = st.mallocFloat(16);
             GlStateManager._glUniformMatrix4(uProj, false, proj.get(fb));
-            GlStateManager._glUniformMatrix4(uView, false, view.get(fb));
+            GlStateManager._glUniformMatrix4(uView, false, terrainView.get(fb));
             FloatBuffer v3 = st.mallocFloat(3);
             GlStateManager._glUniform3(uSun, v3.put(sun).flip());
             v3.clear();
