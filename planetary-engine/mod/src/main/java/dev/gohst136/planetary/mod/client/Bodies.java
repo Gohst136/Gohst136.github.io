@@ -65,6 +65,21 @@ final class Bodies {
     /** Body centre in the home frame E (metres). */
     Vec3 centreE(String b, double t) { return sys.systemToBody(home, t, sys.position(b, t).sub(sys.position(home, t))); }
 
+    Instance instance(String id) { for (Instance in : instances) if (in.def.id().equals(id)) return in; return null; }
+
+    /** A point given in body b's fixed frame -> the home frame E. */
+    Vec3 toE(String b, double t, Vec3 pB) { return centreE(b, t).add(eFromB(b, t, pB)); }
+
+    /** A point of the home frame E -> body b's fixed frame. */
+    Vec3 fromE(String b, double t, Vec3 pE) { return bFromE(b, t, pE.sub(centreE(b, t))); }
+
+    /** Unit direction from body b towards the star, in b's fixed frame. */
+    Vec3 sunDirB(String b, double t) { return bFromE(b, t, sys.systemToBody(home, t, sys.position(b, t).mul(-1.0)).normalize()); }
+
+    /** Direction-only conversion E <-> B. */
+    Vec3 dirToE(String b, double t, Vec3 vB) { return eFromB(b, t, vB); }
+    Vec3 dirFromE(String b, double t, Vec3 vE) { return bFromE(b, t, vE); }
+
     /** Unit direction towards the star, seen from the home planet, in E axes. */
     Vec3 sunDirE(double t) { return sys.systemToBody(home, t, sys.position(home, t).mul(-1.0)).normalize(); }
 

@@ -58,6 +58,16 @@ public final class PlanetClient {
     private static Vec3 toE(Vec3 vI) { return SYSTEM.systemToBody("earth", simTime, vI); }
     private static Vec3 toI(Vec3 vE) { return SYSTEM.bodyToSystem("earth", simTime, vE); }
 
+    /** Local vertical: of the other body whose surface is within 2 radii, else the given default (the home planet's). */
+    private static Vec3 nearBodyUp(Vec3 posE, Vec3 fallback) {
+        if (BODIES == null) return fallback;
+        for (var in : BODIES.instances()) {
+            Vec3 rel = posE.sub(BODIES.centreE(in.def.id(), simTime));
+            if (rel.length() < 3.0 * in.planet.radius()) return rel.normalize();
+        }
+        return fallback;
+    }
+
     private static void aimPlayer(Minecraft mc, Vec3 dir) {
         Vec3 d = dir.normalize();
         mc.player.setYRot((float) Math.toDegrees(Math.atan2(-d.x(), d.z())));
@@ -397,7 +407,8 @@ public final class PlanetClient {
         var up = cam.getUpVector();
         // auto-level: roll the view so the camera's up is the local vertical (horizon stays level anywhere on the planet)
         Vec3 camUp = new Vec3(up.x(), up.y(), up.z());
-        Vec3 desired = radial.sub(fwd.mul(radial.dot(fwd)));
+        Vec3 upRef = nearBodyUp(pos, radial);                                  // local vertical of the nearest body (Moon, ...) or of the home planet
+        Vec3 desired = upRef.sub(fwd.mul(upRef.dot(fwd)));
         Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
         if (bubbleLive) {
             camUp = bubble.direction(up.x(), up.y(), up.z());

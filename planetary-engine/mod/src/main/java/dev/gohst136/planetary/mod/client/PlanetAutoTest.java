@@ -62,6 +62,12 @@ final class PlanetAutoTest {
     private static final FrameStats lapStats = new FrameStats(8000);
     private static final double LAP_V = 4.0e6, LAP_ALT = 50_000.0;
     private static Vec3 lapStartDir, lapAxis;
+    // moon descent: from 2,000 km to 2 m above the Moon's surface (own terrain, own LOD, no atmosphere)
+    private static boolean moonPhase;
+    private static double moonAlt = 2.0e6;
+    private static int moonStop, moonHold;
+    private static final double[] MOON_STOPS = {2e6, 2e5, 2e4, 2e3, 200, 20, 2};
+    private static long moonHoldStart;
     private static final int ORBIT_SHOTS = 11;      // 8 planet views + sun at the limb + Moon close-up + Earth from the Moon
 
     /** Rodrigues rotation of v about the unit axis by angle. */
@@ -164,7 +170,7 @@ final class PlanetAutoTest {
         if (PlanetClient.bubbleLive && mc.player != null) drivePlayer(mc);
     }
 
-    static double scriptedSpeed() { return lap ? LAP_V : orbit ? 0.0 : Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
+    static double scriptedSpeed() { return moonPhase ? Math.max(5.0, moonAlt / 2.0) : lap ? LAP_V : orbit ? 0.0 : Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
 
     /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
@@ -207,6 +213,17 @@ final class PlanetAutoTest {
 
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
+        if (moonPhase) {                                                     // toward the Moon's centre, tilting to the horizon as we descend
+            Vec3 dirB = PlanetClient.BODIES.sunDirB("moon", PlanetClient.simTime);
+            Vec3 tB = dirB.cross(Math.abs(dirB.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+            double rm = PlanetClient.BODIES.instance("moon").planet.radius();
+            double tilt = Math.min(Math.toRadians(60), 0.6 * Math.asin(rm / (rm + moonAlt)));
+            Vec3 lookB = dirB.mul(-1).add(tB.mul(Math.tan(tilt))).normalize();
+            Vec3 l = PlanetClient.BODIES.dirToE("moon", PlanetClient.simTime, lookB);
+            mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
+            mc.player.setYRot((float) Math.toDegrees(Math.atan2(-l.x(), l.z())));
+            return;
+        }
         if (lap) {                                                           // look along the direction of flight, 12 degrees down
             Vec3 p = rotateAbout(lapStartDir, lapAxis, lapAngle);
             Vec3 tangent = lapAxis.cross(p).normalize();
@@ -231,6 +248,16 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
         double groundRadius = targetGround;
+        if (moonPhase) {
+            var in = PlanetClient.BODIES.instance("moon");
+            Vec3 dirB = PlanetClient.BODIES.sunDirB("moon", PlanetClient.simTime);                // the sub-solar point: always lit
+            if (moonHold == 0) {
+                moonAlt = Math.max(MOON_STOPS[MOON_STOPS.length - 1], moonAlt - Math.min(moonAlt / 2.0, 1e18) / 30.0);
+                if (moonAlt <= MOON_STOPS[moonStop] * 1.0001) { moonAlt = MOON_STOPS[moonStop]; moonHold = 1; moonHoldStart = System.nanoTime(); }
+            }
+            double groundM = in.planet.radius() + in.terrain.heightAt(dirB);
+            return PlanetClient.BODIES.toE("moon", PlanetClient.simTime, dirB.mul(groundM + moonAlt));
+        }
         if (lap) {
             long now = System.nanoTime();
             double dt = lapNanos == 0 ? 0 : Math.min(0.1, (now - lapNanos) / 1e9);
@@ -297,6 +324,21 @@ final class PlanetAutoTest {
 
             return;
         }
+        if (moonPhase) {
+            if (moonHold == 0) return;
+            var in = PlanetClient.BODIES.instance("moon");
+            moonHold++;
+            if (moonHold < 40 || (!in.renderer.settled() && System.nanoTime() - moonHoldStart < 15_000_000_000L)) return;
+            if (pendingName != null) return;
+            pendingName = String.format("moon_%08.0fm.png", MOON_STOPS[moonStop]);
+            String line = String.format("MOON alt=%.0fm patches=%d maxLevel=%d | moon %s", MOON_STOPS[moonStop], in.last == null ? 0 : in.last.patches.size(),
+                    in.last == null ? -1 : in.last.maxLevel, in.renderer.stats().get(0) + " " + in.renderer.stats().get(1));
+            System.out.println("[planetary-autotest] " + line);
+            try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
+            moonStop++; moonHold = 0; stage("moon stop " + moonStop);
+            if (moonStop >= MOON_STOPS.length) { moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit"); }
+            return;
+        }
         if (lap) {
             if (clearPending) { renderer.clearCache(); clearPending = false; }
             lapFrames++;
@@ -317,7 +359,7 @@ final class PlanetAutoTest {
                         lapStats.average(), lapStats.p95(), lapStats.p99(), lapStats.worst(), renderer.latencySummary(), renderer.stats().get(0));
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
-                lap = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
+                lap = false; moonPhase = true; moonAlt = 2.0e6; moonStop = 0; moonHold = 0; stage("moon");
             }
             return;
         }
