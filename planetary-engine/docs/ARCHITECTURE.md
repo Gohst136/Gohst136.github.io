@@ -93,7 +93,7 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
 - Free flight near a body uses that body's fixed frame with swept collision against its terrain (`moonFixed`).
 - Benchmark (autotest): Earth 20,000 km -> 2 m, orbit tour, lap at 4,000 km/s, Moon 2,000 km -> 2 m through the real Moon chunks (25/25 chunks, no hole frames),
   back to Earth: transit 0 holes, stream latency p50 13 ms.
-- Known limits: Moon craters deeper than ~450 m are not representable; the real chunks are lit by a day time derived from the star system sun at the landing site (`syncDayTime`, untested in the benchmark, which keeps noon); the Moon sky is the planet
+- Known limits: Moon craters deeper than ~450 m are not representable; the real chunks are lit by a day time derived from the star system sun at the landing site (`syncDayTime`; verified by the benchmark shots `bubble_daysync_night` and `_day`: half a spin turns the real chunks dark and back; the other shots keep noon); the Moon sky is the planet
   pass (stars + sun disc), vanilla sky/clouds are hidden; no Earth-sky transition on the Moon (Earth is drawn by the home renderer).
 
 ## 12. Planetary clouds
