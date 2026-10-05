@@ -83,3 +83,15 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
   (singleplayer, planet world preset). Inertial camera frame in space (switches at 3 / 2.2 planet radii).
 - Not done: landing on the Moon/Ares with real blocks (no chunk generator for them yet), spacecraft, multiplayer protocol,
   GPU-driven culling, ray tracing.
+
+## 11. The Moon with real blocks (measured, RTX 2060)
+- One dimension, several bodies: each body owns a region of the vanilla plane (`planet/BodyPlane`): Earth |x| <= 1.6e7, Moon around x = +2.2e7
+  (both inside the +-3e7 world border; a Mars-sized third body does not fit, so "Ares" is a mesh only).
+- The same `PlanetChunkGenerator` fills Moon chunks from `CraterTerrain` (regolith: andesite / tuff / blackstone by albedo, no water, `The Void` biome:
+  no vegetation, no mobs). Moon relief is scaled by 0.15 (`BodyTerrain.RELIEF`) and block Y uses `VerticalMap.toBlockYAirless`.
+- Handoff works for any body (`PlanetClient.handoff(body, ...)`); Moon gravity = 1.62 / 9.81 of vanilla (attribute `GRAVITY`).
+- Free flight near a body uses that body's fixed frame with swept collision against its terrain (`moonFixed`).
+- Benchmark (autotest): Earth 20,000 km -> 2 m, orbit tour, lap at 4,000 km/s, Moon 2,000 km -> 2 m through the real Moon chunks (25/25 chunks, no hole frames),
+  back to Earth: transit 0 holes, stream latency p50 13 ms.
+- Known limits: Moon craters deeper than ~450 m are not representable; the real chunks are lit by vanilla's day cycle, not by the star system clock; the Moon sky is the planet
+  pass (stars + sun disc), vanilla sky/clouds are hidden; no Earth-sky transition on the Moon (Earth is drawn by the home renderer).

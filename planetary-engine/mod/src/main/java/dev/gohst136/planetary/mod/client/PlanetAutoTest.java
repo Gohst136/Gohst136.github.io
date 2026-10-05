@@ -68,6 +68,7 @@ final class PlanetAutoTest {
     private static int moonStop, moonHold;
     private static final double[] MOON_STOPS = {2e6, 2e5, 2e4, 2e3, 200, 20, 2};
     private static long moonHoldStart, moonChunkWait;
+    private static boolean moonFinish;
     private static Vec3 moonTarget;
 
     /** Landing direction on the Moon (Moon-fixed axes): lit by the sun, away from cube-face edges (the plane has a gap there). */
@@ -353,6 +354,12 @@ final class PlanetAutoTest {
 
             return;
         }
+        if (moonPhase && moonFinish) {
+            if (pendingName != null) return;
+            moonFinish = false; moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
+            PlanetClient.leaveBubble(); PlanetClient.moonFixed = false; PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = targetDir(); PlanetClient.handoffEnabled = true;
+            return;
+        }
         if (moonPhase) {
             if (moonHold == 0) return;
             var in = PlanetClient.BODIES.instance("moon");
@@ -365,10 +372,7 @@ final class PlanetAutoTest {
             System.out.println("[planetary-autotest] " + line);
             try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
             moonStop++; moonHold = 0; stage("moon stop " + moonStop);
-            if (moonStop >= MOON_STOPS.length) {
-                moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
-                PlanetClient.leaveBubble(); PlanetClient.moonFixed = false; PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = targetDir(); PlanetClient.handoffEnabled = true;
-            }
+            if (moonStop >= MOON_STOPS.length) moonFinish = true;          // leave the Moon one frame later, after the last screenshot was taken
             return;
         }
         if (lap) {
