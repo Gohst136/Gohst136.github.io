@@ -15,12 +15,17 @@ public final class CraterTerrain implements TerrainSampler {
     private final PlanetDefinition planet;
     private final Noise3 n;
     private final double radius;
+    private final double[] tint;
 
     private static final int SCALES = 9;                   // crater diameters from ~ 1/12 of the radius down by 1.7x per scale
     private static final double BASE_DIAMETER_FRACTION = 0.16, SHRINK = 1.7;
 
-    public CraterTerrain(PlanetDefinition planet) {
+    public CraterTerrain(PlanetDefinition planet) { this(planet, 1.03, 1.0, 0.96); }
+
+    /** @param tintR/G/B colour multipliers of the grey albedo (Moon: nearly neutral, Mars-like: rust). */
+    public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB) {
         this.planet = planet; this.n = new Noise3(planet.seed() ^ 0x4D6F6F6EL); this.radius = planet.radius();
+        this.tint = new double[]{tintR, tintG, tintB};
     }
 
     @Override public double heightAt(Vec3 d) { return heightAt(d, 0.0); }
@@ -80,9 +85,9 @@ public final class CraterTerrain implements TerrainSampler {
         height = Math.max(-planet.maxDepth(), Math.min(planet.maxHeight(), height));
         // albedo: dark basins, bright fresh crater rims/ejecta, slight noise
         double base = 0.55 - 0.28 * mare + 0.18 * Math.min(1.0, ejecta / 300.0) - 0.05 * Math.min(1.0, craterDepth / 800.0);
-        double tint = base * (0.94 + 0.12 * n.noise(x * 60 + 4, y * 60, z * 60));
+        double shade = base * (0.94 + 0.12 * n.noise(x * 60 + 4, y * 60, z * 60));
         out[0] = height;
-        out[1] = tint * 1.03; out[2] = tint; out[3] = tint * 0.96;
+        out[1] = Math.min(1.0, shade * tint[0]); out[2] = Math.min(1.0, shade * tint[1]); out[3] = Math.min(1.0, shade * tint[2]);
         out[4] = 0.0;
     }
 

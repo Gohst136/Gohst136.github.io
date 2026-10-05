@@ -36,7 +36,7 @@ import java.util.List;
  */
 @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
 public final class PlanetClient {
-    static final double FAR = 1.0e9;
+    static final double FAR = 1.0e12;
     private static final double NEAR = 0.1;
 
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
@@ -47,8 +47,26 @@ public final class PlanetClient {
     static VanillaHeights vanilla;
     static String terrainMode = "procedural";
 
-    /** Unit vector towards the sun in the planet frame. */
-    static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
+    /** The star system and the clock that drives it (simulation seconds since the epoch). */
+    static dev.gohst136.planetary.system.StarSystem SYSTEM;
+    static Bodies BODIES;
+    static double simTime, timeScale;
+
+    /** Creates the star system, its renderers and the clock (idempotent). */
+    static void initSystem() {
+        if (SYSTEM != null) return;
+        SYSTEM = dev.gohst136.planetary.system.StarSystem.example(PLANET.seed());
+        BODIES = new Bodies(SYSTEM, "earth");
+        timeScale = Boolean.getBoolean("planetary.autotest") ? 0.0 : Double.parseDouble(System.getProperty("planetary.timeScale", "60"));
+        simTime = Double.parseDouble(System.getProperty("planetary.simStart", "0"));
+    }
+
+    /** Unit vector from the home planet towards the star, in the planet's body-fixed axes, at the current simulation time. */
+    static float[] sunDirE() {
+        if (BODIES == null) return new float[]{0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
+        Vec3 d = BODIES.sunDirE(simTime);
+        return new float[]{(float) d.x(), (float) d.y(), (float) d.z()};
+    }
     static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
     static boolean suspended;                  // diagnostics: my render handler does nothing at all (pure vanilla frame)
     static boolean collisionBlocked;           // last free-flight move was stopped by terrain
@@ -105,6 +123,7 @@ public final class PlanetClient {
                 lastNanos = System.nanoTime();
                 if (selector == null) {
                     chooseTerrain(mc);
+                    initSystem();
                     selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
                     predictNear = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
                     predictFar = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
@@ -285,6 +304,7 @@ public final class PlanetClient {
         double dt = Math.min(0.1, (now - lastNanos) / 1e9);
         lastNanos = now;
         FRAMES.record(dt * 1000.0);
+        simTime += dt * timeScale;
 
         var cam = e.getCamera();
         var look = cam.getLookVector();
@@ -376,11 +396,13 @@ public final class PlanetClient {
         }
 
         Matrix4f proj = new Matrix4f().perspective((float) fovY, (float) aspect, (float) NEAR, (float) FAR);
-        float[] sun = SUN;
+        float[] sun = sunDirE();
         PlanetAutoTest.afterFrame(lastResult, renderer, FRAMES, selectMs);
         // planet mode owns the whole picture: black space (stars are added by the atmosphere pass), depth reset
         if (planetOff) RenderSystem.clearColor(1f, 0f, 1f, 1f); else RenderSystem.clearColor(0f, 0f, 0f, 1f);   // magenta backdrop in the diagnostic shot
         RenderSystem.clear(16384 | 256, Minecraft.ON_OSX);
+        BODIES.occluders(simTime, pos, GlPlanetRenderer.occC, GlPlanetRenderer.occR);
+        if (!planetOff) BODIES.draw(simTime, pos, fwd, camUp, fovY, h, w, speed, viewRot, proj);
         if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, proj, sun);
         if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
@@ -401,6 +423,8 @@ public final class PlanetClient {
         lines.add(String.format("frame ms avg=%.1f med=%.1f p95=%.1f p99=%.1f worst=%.1f", FRAMES.average(), FRAMES.median(),
                 FRAMES.p95(), FRAMES.p99(), FRAMES.worst()));
         lines.addAll(renderer.stats());
+        if (BODIES != null) for (var in : BODIES.instances()) lines.add(in.def.id() + String.format(": %d patches, %.0f px radius", in.last == null ? 0 : in.last.patches.size(), in.angularRadiusPx));
+        lines.add(String.format("sim time %.1f h (x%.0f)", simTime / 3600.0, timeScale));
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }
         e.getGuiGraphics().flush();

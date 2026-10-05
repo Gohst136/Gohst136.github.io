@@ -53,6 +53,26 @@ final class PlanetAutoTest {
             new Vec3(0.7, 0.7, 0).normalize(), new Vec3(0.5, -0.7, -0.5).normalize(),
             new Vec3(0.05, 1, 0.05).normalize(), new Vec3(0.05, -1, 0.05).normalize()};
     private static final double ORBIT_ALT = 9.0e6;
+    private static final int ORBIT_SHOTS = 11;      // 8 planet views + sun at the limb + Moon close-up + Earth from the Moon
+
+    /** {camera position, look direction} in the home planet's body-fixed axes for orbit-tour shot i. */
+    private static Vec3[] orbitShot(int i) {
+        double R = PlanetClient.PLANET.radius();
+        if (i < ORBIT_DIRS.length) return new Vec3[]{ORBIT_DIRS[i].mul(R + ORBIT_ALT), ORBIT_DIRS[i].mul(-1)};
+        Vec3 sun = new Vec3(PlanetClient.sunDirE()[0], PlanetClient.sunDirE()[1], PlanetClient.sunDirE()[2]);
+        if (i == ORBIT_DIRS.length) {                                        // the sun just above the planet's limb
+            Vec3 perp = sun.cross(new Vec3(0, 0, 1)).normalize();
+            Vec3 look = sun.mul(0.8).sub(perp.mul(0.6)).normalize();
+            return new Vec3[]{perp.mul(R + ORBIT_ALT), look};
+        }
+        Vec3 moon = PlanetClient.BODIES.centreE("moon", PlanetClient.simTime);
+        if (i == ORBIT_DIRS.length + 1) {                                    // the Moon, 4,000 km away, lit side towards the camera
+            Vec3 toSunFromMoon = sun.mul(1.0);                               // the sun is ~1 AU away: the direction is the same everywhere
+            return new Vec3[]{moon.add(toSunFromMoon.mul(4.0e6)), toSunFromMoon.mul(-1)};
+        }
+        Vec3 toEarth = moon.mul(-1).normalize();                             // Earth seen from 3,000 km above the Moon's surface
+        return new Vec3[]{moon.add(toEarth.mul(1.737e6 + 3.0e6)), toEarth};
+    }
     private static int landingTick;
     private static boolean clearPending;
     private static String targetInfo = "";
@@ -120,6 +140,7 @@ final class PlanetAutoTest {
             try { log = new FileWriter(new File(outDir, "stats.txt"));
                 log.write("GPU: " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_RENDERER) + " | GL " + org.lwjgl.opengl.GL11.glGetString(org.lwjgl.opengl.GL11.GL_VERSION) + "\n"); } catch (IOException e) { throw new RuntimeException(e); }
             PlanetClient.preparePlanet(mc);
+            PlanetClient.initSystem();                           // sun direction (day side) for the landing site
             PlanetClient.anchor = targetDir();                   // landing site (vanilla path: terrain is flattened around it)
             startWatchdog();
             PlanetClient.setActive(true);
@@ -143,7 +164,7 @@ final class PlanetAutoTest {
             for (int i = 0; i < n; i++) {
                 double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
                 Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
-                if (d.x() * PlanetClient.SUN[0] + d.y() * PlanetClient.SUN[1] + d.z() * PlanetClient.SUN[2] < 0.5) continue;   // day side only
+                if (d.x() * PlanetClient.sunDirE()[0] + d.y() * PlanetClient.sunDirE()[1] + d.z() * PlanetClient.sunDirE()[2] < 0.5) continue;   // day side only
                 if (!vanillaPath && Math.abs(d.y()) > 0.8) continue;           // temperate/tropical latitudes
                 if (dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(d) > 0.8) continue;   // keep the landing site clear of cube edges
                 double h = search.heightAt(d, 1e9);                   // coarse only: fast, no per-point vanilla/rivers cost
@@ -172,7 +193,7 @@ final class PlanetAutoTest {
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
         if (orbit && orbitHold >= 0) {
-            Vec3 l = ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(-1);
+            Vec3 l = orbitShot(Math.min(orbitIdx, ORBIT_SHOTS - 1))[1];
             mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
             mc.player.setYRot((float) Math.toDegrees(Math.atan2(-l.x(), l.z())));
             return;
@@ -187,7 +208,7 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
         double groundRadius = targetGround;
-        if (orbit && orbitHold >= 0) return ORBIT_DIRS[Math.min(orbitIdx, ORBIT_DIRS.length - 1)].mul(PlanetClient.PLANET.radius() + ORBIT_ALT);
+        if (orbit && orbitHold >= 0) return orbitShot(Math.min(orbitIdx, ORBIT_SHOTS - 1))[0];
         if (transit) {
             if (PlanetClient.realWorld && alt < 420 && !PlanetClient.bubbleLive && PlanetClient.bubble != null && !PlanetClient.chunksReady(Minecraft.getInstance())) {
                 lastTransitNanos = System.nanoTime();                    // chunks missing: hover (the clock must not run)
@@ -249,7 +270,7 @@ final class PlanetAutoTest {
             if (++orbitHold < 40 || (!renderer.settled() && orbitHold < 600)) return;
             pendingName = String.format("orbit_%d.png", orbitIdx);
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
-            if (orbitIdx >= ORBIT_DIRS.length) { orbit = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; }
+            if (orbitIdx >= ORBIT_SHOTS) { orbit = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; }
             return;
         }
         if (stop >= STOPS.length) return;

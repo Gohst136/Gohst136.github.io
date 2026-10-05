@@ -65,7 +65,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final PlanetDefinition planet;
     private int atmoProgram = -1, atmoVao;
     private boolean atmoFailed;
-    private int aInvProj, aView, aUp, aSun, aR0, aH0, aR, aAtmH;
+    private int aInvProj, aView, aUp, aSun, aR0, aH0, aR, aAtmH, aOccC, aOccR;
+    /** Occluders for the sky pass (set each frame by the client): camera-relative centres (E axes) and radii of the other bodies. */
+    static final float[] occC = new float[6], occR = new float[2];
     private final Map<PatchKey, Gpu> resident = new HashMap<>();
     private final Set<PatchKey> inFlight = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Built> finished = new ConcurrentLinkedQueue<>();
@@ -88,10 +90,12 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final java.util.concurrent.atomic.AtomicLong meshesBuilt = new java.util.concurrent.atomic.AtomicLong();
     private long uploadsTotal;
 
-    GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet) {
+    GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet) { this(builder, planet, WORKERS); }
+
+    GlPlanetRenderer(PatchMeshBuilder builder, PlanetDefinition planet, int workerThreads) {
         this.builder = builder;
         this.planet = planet;
-        this.workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS,
+        this.workers = new ThreadPoolExecutor(workerThreads, workerThreads, 30, TimeUnit.SECONDS,
                 new PriorityBlockingQueue<Runnable>(256, (a, b) -> ((Job) a).compareTo((Job) b)),
                 r -> {
                     Thread t = new Thread(r, "planetary-mesh-" + workerId.incrementAndGet());
@@ -225,7 +229,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             }
         }
         drawnLastFrame = toDraw.size();
-        drawAtmosphere(cam, view, proj, sun);
+        if (planet.atmosphereHeight() > 0) drawAtmosphere(cam, view, proj, sun);        // airless bodies have none
         GlStateManager._glBindVertexArray(0);
         GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         // vanilla caches the last-used program/VAO; reset its static state through a vanilla shader's clear()
@@ -250,6 +254,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                 aH0 = GlStateManager._glGetUniformLocation(atmoProgram, "uH0");
                 aR = GlStateManager._glGetUniformLocation(atmoProgram, "uR");
                 aAtmH = GlStateManager._glGetUniformLocation(atmoProgram, "uAtmH");
+                aOccC = GlStateManager._glGetUniformLocation(atmoProgram, "uOccC");
+                aOccR = GlStateManager._glGetUniformLocation(atmoProgram, "uOccR");
                 atmoVao = GlStateManager._glGenVertexArrays();
             }
         } catch (RuntimeException e) {
@@ -276,6 +282,10 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             GlStateManager._glUniform1(aH0, st.floats((float) (r0 - planet.radius())));
             GlStateManager._glUniform1(aR, st.floats((float) planet.radius()));
             GlStateManager._glUniform1(aAtmH, st.floats((float) planet.atmosphereHeight()));
+            FloatBuffer oc = st.mallocFloat(6); oc.put(occC).flip();
+            GlStateManager._glUniform3(aOccC, oc);
+            FloatBuffer orr = st.mallocFloat(2); orr.put(occR).flip();
+            GlStateManager._glUniform1(aOccR, orr);
         }
         GlStateManager._glBindVertexArray(atmoVao);
         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);

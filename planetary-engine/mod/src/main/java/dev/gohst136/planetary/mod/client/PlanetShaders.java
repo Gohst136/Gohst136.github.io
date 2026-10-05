@@ -97,6 +97,8 @@ final class PlanetShaders {
             uniform float uH0;        // camera altitude above the baseline radius (precise, from double)
             uniform float uR;         // planet baseline radius
             uniform float uAtmH;      // atmosphere height
+            uniform vec3 uOccC[2];    // other bodies that can hide stars and the sun: centre relative to the camera (E axes) ...
+            uniform float uOccR[2];   // ... and radius (0 = unused)
             out vec4 fragColor;
             const float HR = 8000.0;
             const float HM = 1200.0;
@@ -138,7 +140,19 @@ final class PlanetShaders {
                 float mu = dot(d, uUp);
                 vec2 gnd = sphere(mu, 0.0);
                 bool hitsPlanet = gnd.x < gnd.y && gnd.x > 0.0;
-                vec3 starCol = hitsPlanet ? vec3(0.0) : stars(d);
+                bool hidden = hitsPlanet;
+                for (int k = 0; k < 2; k++) {                        // other bodies hide what is behind them
+                    if (uOccR[k] <= 0.0) continue;
+                    vec3 oc = -uOccC[k];                             // camera relative to the body centre
+                    float b = dot(oc, d), cc = dot(oc, oc) - uOccR[k] * uOccR[k];
+                    float disc = b * b - cc;
+                    if (disc > 0.0 && -b - sqrt(disc) > 0.0) hidden = true;
+                }
+                vec3 starCol = hidden ? vec3(0.0) : stars(d);
+                // the sun: a hard disc (angular radius 0.0047 rad = the real Sun from 1 AU) with a soft corona
+                float cs = dot(d, uSun);
+                float sunDisc = smoothstep(0.99998917, 0.99999, cs) * 14.0 + pow(max(cs, 0.0), 900.0) * 0.9 + pow(max(cs, 0.0), 60.0) * 0.05;
+                if (!hidden) starCol += vec3(1.0, 0.96, 0.88) * sunDisc;
                 vec2 atm = sphere(mu, uAtmH);
                 if (atm.y <= 0.0 || atm.x > atm.y) { fragColor = vec4(starCol, 1.0); return; }
                 float s0 = max(atm.x, 0.0), s1 = atm.y;
