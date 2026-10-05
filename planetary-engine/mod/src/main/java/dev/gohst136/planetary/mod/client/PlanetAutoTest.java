@@ -55,6 +55,7 @@ final class PlanetAutoTest {
     private static final double ORBIT_ALT = 9.0e6;
     // lap benchmark (spec section 12/52): once round the planet at 4,000 km/s, 50 km above the ground
     private static boolean lap, lapShot;
+    private static int lapDebug, lapDebugFrames;
     private static double lapAngle, lapSeconds;
     private static long lapNanos;
     private static int lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles;
@@ -393,6 +394,14 @@ final class PlanetAutoTest {
             if (fb > 0) lapFallbackFrames++;
             if (ho > 0) lapHoleFrames++;
             lapMaxHoles = Math.max(lapMaxHoles, ho);
+            if (lapShot && pendingName == null && lapDebug < 5) {                 // LOD debug views over the day side (levels ~6-12 are visible from here)
+                lapDebugFrames++;
+                if (lapDebug == 0) { GlPlanetRenderer.debugMode = 1; lapDebug = 1; lapDebugFrames = 0; }
+                else if (lapDebug == 1 && lapDebugFrames > 8) { pendingName = "lap_debug_levels.png"; lapDebug = 2; lapDebugFrames = 0; }
+                else if (lapDebug == 2 && lapDebugFrames > 3) { GlPlanetRenderer.debugMode = 2; lapDebug = 3; lapDebugFrames = 0; }
+                else if (lapDebug == 3 && lapDebugFrames > 8) { pendingName = "lap_debug_wire.png"; lapDebug = 4; lapDebugFrames = 0; }
+                else if (lapDebug == 4 && lapDebugFrames > 3) { GlPlanetRenderer.debugMode = 0; lapDebug = 5; }
+            }
             lapFallbackPatches += fb; lapSelectedPatches += r.patches.size();
             if (lapAngle >= 2 * Math.PI) {
                 String line = String.format("LAP (one orbit at %.0f km/s, %.0f km above ground): %.1f s, frames=%d fallbackFrames=%d (patch-weighted fallback share %.1f%%) holeFrames=%d (max %d patches) frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | %s | %s",
@@ -411,7 +420,7 @@ final class PlanetAutoTest {
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
             if (orbitIdx >= ORBIT_SHOTS) {
                 PlanetClient.leaveBubble(); PlanetClient.handoffEnabled = false;
-                orbit = false; lap = true; lapShot = false; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0; lapFallbackPatches = lapSelectedPatches = 0;
+                orbit = false; lap = true; lapShot = false; lapDebug = 0; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0; lapFallbackPatches = lapSelectedPatches = 0;
                 lapStartDir = new Vec3(1, 0, 0); lapAxis = new Vec3(0, 0, 1);
                 clearPending = true; stage("lap");                          // cold cache: a lap must really stream
             }
