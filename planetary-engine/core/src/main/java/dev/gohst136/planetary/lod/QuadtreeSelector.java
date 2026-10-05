@@ -30,7 +30,7 @@ public final class QuadtreeSelector {
     public record Params(double thresholdPixels, double hysteresis, int maxLevel, int gridCells,
                          int patchBudget, double velocityDwellSeconds, double maxVelocityRelax) {
         /** Same as {@link #defaults()} but no level finer than 18 (cells of 1 block): the block skin has nothing finer to show. */
-        public static Params skin() { return new Params(1.0, 0.6, 18, 32, 6000, 0.05, 12.0); }
+        public static Params skin() { return new Params(1.6, 0.6, 18, 32, 6000, 0.05, 12.0); }
         public static Params defaults() { return new Params(1.0, 0.6, 22, 32, 6000, 0.05, 12.0); }   // detail relaxes up to 13x at extreme speed: terrain visible for milliseconds needs no 1 px accuracy
     }
 

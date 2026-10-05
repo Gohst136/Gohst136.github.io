@@ -522,7 +522,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         int budget = finished.size() > 64 ? 40 : MAX_UPLOADS_PER_FRAME;
         long uploadStart = System.nanoTime();
         for (int i = 0; i < budget; i++) {
-            if (i >= MAX_UPLOADS_PER_FRAME && System.nanoTime() - uploadStart > 3_000_000L) return;
+            if (i >= MAX_UPLOADS_PER_FRAME && System.nanoTime() - uploadStart > (skinBuilder != null ? 5_000_000L : 3_000_000L)) return;
             Built b = finished.poll();
             if (b == null) return;
             inFlight.remove(b.key());

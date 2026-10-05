@@ -152,36 +152,40 @@ public final class BlockSkinBuilder {
             }
         }
 
+        if (cell == 1.0) {
+            wallsExact(opaque, p, uv, col, w, n, x0, z0, R, origin);
+        } else {
         // walls: for each of the four sides, runs along the edge of columns with the same wall profile become one quad
-        double skirt = Math.max(2.0, 1.5 * cell);
-        for (int side = 0; side < 4; side++) {
-            boolean alongX = side >= 2;                     // sides 0,1 are -x/+x faces (run along z), sides 2,3 are -z/+z faces (run along x)
-            int lines = n, len = n;
-            for (int line = 0; line < lines; line++) {
-                int k = 0;
-                while (k < len) {
-                    int cx = alongX ? k : line, cz = alongX ? line : k;
-                    // iterate over the cells in this row/column that have a neighbour on this side
-                    Column c = col[(cz + 1) * w + (cx + 1)];
-                    int nxo = side == 0 ? -1 : side == 1 ? 1 : 0, nzo = side == 2 ? -1 : side == 3 ? 1 : 0;
-                    Column nb = col[(cz + 1 + nzo) * w + (cx + 1 + nxo)];
-                    boolean border = alongX ? (side == 2 ? cz == 0 : cz == n - 1) : (side == 0 ? cx == 0 : cx == n - 1);
-                    double bottom = wallBottom(c, nb, border, skirt);
-                    if (Double.isNaN(bottom)) { k++; continue; }
-                    int run = 1;
-                    while (k + run < len) {
-                        int cx2 = alongX ? k + run : cx, cz2 = alongX ? cz : k + run;
-                        Column c2 = col[(cz2 + 1) * w + (cx2 + 1)], nb2 = col[(cz2 + 1 + nzo) * w + (cx2 + 1 + nxo)];
-                        double b2 = wallBottom(c2, nb2, border, skirt);
-                        if (Double.isNaN(b2) || b2 != bottom || c2.groundY() != c.groundY() || c2.top() != c.top() || c2.filler() != c.filler() || style.tintOverlay(c2) != style.tintOverlay(c)) break;
-                        run++;
+            double skirt = Math.max(2.0, 1.5 * cell);
+            for (int side = 0; side < 4; side++) {
+                boolean alongX = side >= 2;                     // sides 0,1 are -x/+x faces (run along z), sides 2,3 are -z/+z faces (run along x)
+                int lines = n, len = n;
+                for (int line = 0; line < lines; line++) {
+                    int k = 0;
+                    while (k < len) {
+                        int cx = alongX ? k : line, cz = alongX ? line : k;
+                        // iterate over the cells in this row/column that have a neighbour on this side
+                        Column c = col[(cz + 1) * w + (cx + 1)];
+                        int nxo = side == 0 ? -1 : side == 1 ? 1 : 0, nzo = side == 2 ? -1 : side == 3 ? 1 : 0;
+                        Column nb = col[(cz + 1 + nzo) * w + (cx + 1 + nxo)];
+                        boolean border = alongX ? (side == 2 ? cz == 0 : cz == n - 1) : (side == 0 ? cx == 0 : cx == n - 1);
+                        double bottom = wallBottom(c, nb, border, skirt);
+                        if (Double.isNaN(bottom)) { k++; continue; }
+                        int run = 1;
+                        while (k + run < len) {
+                            int cx2 = alongX ? k + run : cx, cz2 = alongX ? cz : k + run;
+                            Column c2 = col[(cz2 + 1) * w + (cx2 + 1)], nb2 = col[(cz2 + 1 + nzo) * w + (cx2 + 1 + nxo)];
+                            double b2 = wallBottom(c2, nb2, border, skirt);
+                            if (Double.isNaN(b2) || b2 != bottom || c2.groundY() != c.groundY() || c2.top() != c.top() || c2.filler() != c.filler() || style.tintOverlay(c2) != style.tintOverlay(c)) break;
+                            run++;
+                        }
+                        // plane edge of this wall
+                        double ax, az, bx, bz;
+                        if (alongX) { ax = x0 + k * cell; bx = x0 + (k + run) * cell; az = bz = z0 + (side == 2 ? cz * cell : (cz + 1) * cell); }
+                        else { az = z0 + k * cell; bz = z0 + (k + run) * cell; ax = bx = x0 + (side == 0 ? cx * cell : (cx + 1) * cell); }
+                        wallQuads(opaque, p, uv, c, bottom, ax, az, bx, bz, alongX ? SHADE_NS : SHADE_EW, run * cell, R, origin);
+                        k += run;
                     }
-                    // plane edge of this wall
-                    double ax, az, bx, bz;
-                    if (alongX) { ax = x0 + k * cell; bx = x0 + (k + run) * cell; az = bz = z0 + (side == 2 ? cz * cell : (cz + 1) * cell); }
-                    else { az = z0 + k * cell; bz = z0 + (k + run) * cell; ax = bx = x0 + (side == 0 ? cx * cell : (cx + 1) * cell); }
-                    wallQuads(opaque, p, uv, c, bottom, ax, az, bx, bz, alongX ? SHADE_NS : SHADE_EW, run * cell, R, origin);
-                    k += run;
                 }
             }
         }
@@ -202,6 +206,86 @@ public final class BlockSkinBuilder {
         Vec3 d = PlaneUnwrap.inverse(px, pz, half);
         Vec3 pt = d.mul(R + VerticalMap.toMeters(y)).sub(origin);
         out[i * 3] = pt.x(); out[i * 3 + 1] = pt.y(); out[i * 3 + 2] = pt.z();
+    }
+
+    private static boolean solid(Column c, int y) { return c.groundY() >= y; }
+
+    /**
+     * Walls of 1-block cells, block by block, with vanilla's ambient occlusion: a wall face looks into the air block of the lower neighbour column; its
+     * four vertices darken with the solid blocks around that air block (the lower column's top just below, taller columns next to it along the edge).
+     * Rows without any occlusion are merged vertically. Patch borders keep their skirts.
+     */
+    private void wallsExact(Quads out, double[] p, double[] uv, Column[] col, int w, int n, double x0, double z0, double R, Vec3 origin) {
+        final int[][] nbOff = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};                     // -x, +x, -z, +z
+        for (int cz = 0; cz < n; cz++) for (int cx = 0; cx < n; cx++) {
+            Column c = col[(cz + 1) * w + (cx + 1)];
+            int top = c.groundY();
+            for (int side = 0; side < 4; side++) {
+                int ax = cx + nbOff[side][0], az = cz + nbOff[side][1];
+                Column nb = col[(az + 1) * w + (ax + 1)];
+                boolean border = ax < 0 || ax >= n || az < 0 || az >= n;
+                boolean xFace = side < 2;
+                // plane edge: along z for x faces, along x for z faces
+                double ex0, ez0, ex1, ez1;
+                if (xFace) { ex0 = ex1 = x0 + (side == 0 ? cx : cx + 1); ez0 = z0 + cz; ez1 = ez0 + 1; }
+                else { ez0 = ez1 = z0 + (side == 2 ? cz : cz + 1); ex0 = x0 + cx; ex1 = ex0 + 1; }
+                float shade = xFace ? SHADE_EW : SHADE_NS;
+                if (nb.groundY() >= top) {
+                    if (border) wallRange(out, p, uv, c, top + 1.0, top + 1.0 - Math.max(2.0, 1.5), ex0, ez0, ex1, ez1, shade, 1.0, R, origin);   // skirt
+                    continue;
+                }
+                // the two columns next to the lower neighbour along the edge
+                Column lowEnd = xFace ? col[(az + 1 - 1 + 1) * w + (ax + 1)] : col[(az + 1) * w + (ax + 1 - 1)];
+                Column highEnd = xFace ? col[(az + 1 + 1) * w + (ax + 1)] : col[(az + 1) * w + (ax + 1 + 1)];
+                int bottomY = nb.groundY() + 1;
+                int groupHi = -1;                                      // top Y of the pending run of unoccluded rows
+                Kind groupKind = null;
+                for (int y = top; y >= bottomY; y--) {
+                    Kind kind = y == top ? c.top() : (y >= top - 3 ? c.filler() : Kind.STONE);
+                    int[] o = new int[4];                              // occluders at (low,hi) (low,lo) (high,lo) (high,hi)
+                    for (int v = 0; v < 4; v++) {
+                        Column end = (v == 0 || v == 1) ? lowEnd : highEnd;
+                        boolean hi = v == 0 || v == 3;
+                        boolean s1 = solid(end, y), s2 = hi ? solid(nb, y + 1) : solid(nb, y - 1), cn = solid(end, hi ? y + 1 : y - 1);
+                        o[v] = (s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0);
+                    }
+                    boolean flat = o[0] == 0 && o[1] == 0 && o[2] == 0 && o[3] == 0;
+                    if (flat && (groupKind == null || groupKind == kind)) { if (groupKind == null) { groupHi = y + 1; groupKind = kind; } continue; }
+                    if (groupKind != null) { wallRows(out, p, uv, c, groupKind, groupHi, y + 1, null, ex0, ez0, ex1, ez1, shade, R, origin); groupKind = null; }
+                    if (flat) { groupHi = y + 1; groupKind = kind; continue; }
+                    wallRows(out, p, uv, c, kind, y + 1, y, o, ex0, ez0, ex1, ez1, shade, R, origin);
+                }
+                if (groupKind != null) wallRows(out, p, uv, c, groupKind, groupHi, bottomY, null, ex0, ez0, ex1, ez1, shade, R, origin);
+                if (border && top + 1.0 - Math.max(2.0, 1.5) < bottomY) wallRange(out, p, uv, c, bottomY, top + 1.0 - Math.max(2.0, 1.5), ex0, ez0, ex1, ez1, shade, 1.0, R, origin);   // skirt below the wall
+            }
+        }
+    }
+
+    /** One quad (plus the tinted overlay for grass sides) of a wall of one kind between heights yHi and yLo; {@code o} = occluder counts per vertex or null. */
+    private void wallRows(Quads out, double[] p, double[] uv, Column c, Kind kind, double yHi, double yLo, int[] o,
+                          double ax, double az, double bx, double bz, float shade, double R, Vec3 origin) {
+        corner(p, 0, ax, az, yHi, R, origin); corner(p, 1, ax, az, yLo, R, origin); corner(p, 2, bx, bz, yLo, R, origin); corner(p, 3, bx, bz, yHi, R, origin);
+        uv[0] = 0; uv[1] = -yHi; uv[2] = 0; uv[3] = -yLo; uv[4] = 1; uv[5] = -yLo; uv[6] = 1; uv[7] = -yHi;
+        int[] oc = o == null ? new int[4] : o;
+        out.add(p, uv, color(shade * (1f - 0.2f * oc[0]), 0xFFFFFF), color(shade * (1f - 0.2f * oc[1]), 0xFFFFFF), color(shade * (1f - 0.2f * oc[2]), 0xFFFFFF),
+                color(shade * (1f - 0.2f * oc[3]), 0xFFFFFF), style.slotSide(kind), 15);
+        if (kind == c.top() && yHi > c.groundY() && style.slotSideOverlay(kind) >= 0) {
+            int t = style.tintOverlay(c);
+            out.add(p, uv, color(shade * (1f - 0.2f * oc[0]), t), color(shade * (1f - 0.2f * oc[1]), t), color(shade * (1f - 0.2f * oc[2]), t),
+                    color(shade * (1f - 0.2f * oc[3]), t), style.slotSideOverlay(kind), 15);
+        }
+    }
+
+    /** Wall between two heights without occlusion (skirts), segmented by depth like the generator fills the column. */
+    private void wallRange(Quads out, double[] p, double[] uv, Column c, double yHi0, double yLo0, double ax, double az, double bx, double bz,
+                           float shade, double len, double R, Vec3 origin) {
+        int top = c.groundY();
+        double[] edges = {top + 1.0, top, top - 3.0, yLo0};
+        for (int s = 0; s < 3; s++) {
+            double yHi = Math.min(edges[s], yHi0), yLo = Math.max(edges[s + 1], yLo0);
+            if (yHi <= yLo + 1e-9) continue;
+            wallRows(out, p, uv, c, s == 0 ? c.top() : (s == 1 ? c.filler() : Kind.STONE), yHi, yLo, null, ax, az, bx, bz, shade, R, origin);
+        }
     }
 
     /** Bottom of the wall of {@code c} towards neighbour {@code nb}, or NaN when there is no wall (the neighbour is as high; patch borders get a skirt). */
