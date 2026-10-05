@@ -477,6 +477,14 @@ final class PlanetAutoTest {
                 if (m > 48) over48++;
             }
             javax.imageio.ImageIO.write(out, "png", new File(shots, "diff_amplified.png"));
+            { var bf = PlanetClient.bubble; var mc2 = Minecraft.getInstance();
+              if (bf != null && mc2.level != null) {
+                  int gx = (int) Math.floor(bf.x0), gz = (int) Math.floor(bf.z0), gy = PlanetClient.clientTopSolid(mc2, gx, gz);
+                  var above = new net.minecraft.core.BlockPos(gx, gy + 1, gz);
+                  String d = String.format("LIGHT real chunks at the anchor: sky light above the ground block = %d, block light = %d, packed light colour = %s", mc2.level.getBrightness(net.minecraft.world.level.LightLayer.SKY, above), mc2.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, above), Integer.toHexString(net.minecraft.client.renderer.LevelRenderer.getLightColor(mc2.level, above)));
+                  System.out.println("[planetary-autotest] " + d + " | " + GlPlanetRenderer.lightmapDump());
+                  try (FileWriter w3 = new FileWriter(new File(outDir, "stats.txt"), true)) { w3.write(d + " | " + GlPlanetRenderer.lightmapDump() + "\n"); } catch (IOException ignored) {}
+              } }
             String line = String.format("SKINDIFF real chunks vs block skin, same pose (lower half): mean |diff| R=%.1f G=%.1f B=%.1f (of 255), pixels differing by >16: %.1f%%, >48: %.1f%%, skin brighter by %.1f (luminance)",
                     sr / n, sg / n, sb / n, 100.0 * over16 / n, 100.0 * over48 / n, sl / n);
             System.out.println("[planetary-autotest] " + line);

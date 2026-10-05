@@ -60,6 +60,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     private static final class Gpu {
         boolean skin;
+        float posScale;
         int opaqueIndexCount, waterIndexCount;
         int vao, vbo, ebo, indexCount;
         double[] origin;
@@ -78,7 +79,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private volatile BlockSkinBuilder skinBuilder;
     private SkinStyleImpl skinStyle;
     private int skinProgram = -1, skinEbo = -1, kProj, kView, kOffset, kFarLog, kRects, kAtlas, kLight;
-    private int skinDrawnLastFrame;
+    private int skinDrawnLastFrame, kPosScale;
+    private long skinQuadsResident, skinPatchesBuilt;
 
     /** Turns the block skin on for this renderer (home planet only); the builder itself is created on the first frame, when the game's models exist. */
     void enableSkin(RealisticTerrain terrain) { if (SKIN_ALLOWED) this.skinTerrain = terrain; }
@@ -363,6 +365,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             kRects = GlStateManager._glGetUniformLocation(skinProgram, "uRects");
             kAtlas = GlStateManager._glGetUniformLocation(skinProgram, "uAtlas");
             kLight = GlStateManager._glGetUniformLocation(skinProgram, "uLight");
+            kPosScale = GlStateManager._glGetUniformLocation(skinProgram, "uPosScale");
             skinBuilder = new BlockSkinBuilder(planet, skinTerrain, skinStyle);
             System.out.println("[planetary] block skin enabled from level " + SKIN_FROM_LEVEL);
         } catch (Throwable t) {
@@ -375,11 +378,15 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private void uploadSkin(PatchKey key, SkinMesh m) {
         int quads = Math.min(m.quadCount(), SKIN_MAX_QUADS);
         int waterStart = Math.min(m.waterStart(), quads);
-        ByteBuffer vb = MemoryUtil.memAlloc(quads * 4 * 28);
+        // positions as int16 with a per-patch scale (about 1 mm at the finest level, 1 cm at the coarsest), uv as int16 quarter blocks: 20 bytes per vertex
+        float maxAbs = 1e-3f;
+        for (int i = 0; i < quads * 12; i++) maxAbs = Math.max(maxAbs, Math.abs(m.pos()[i]));
+        float scale = maxAbs / 32000f;
+        ByteBuffer vb = MemoryUtil.memAlloc(quads * 4 * 20);
         for (int q = 0; q < quads; q++) for (int v = 0; v < 4; v++) {
             int i = q * 4 + v;
-            vb.putFloat(m.pos()[i * 3]).putFloat(m.pos()[i * 3 + 1]).putFloat(m.pos()[i * 3 + 2]);
-            vb.putFloat(m.uv()[i * 2]).putFloat(m.uv()[i * 2 + 1]);
+            vb.putShort((short) Math.round(m.pos()[i * 3] / scale)).putShort((short) Math.round(m.pos()[i * 3 + 1] / scale)).putShort((short) Math.round(m.pos()[i * 3 + 2] / scale)).putShort((short) 0);
+            vb.putShort((short) Math.round(m.uv()[i * 2] * 4f)).putShort((short) Math.round(m.uv()[i * 2 + 1] * 4f));
             int c = m.rgba()[i];
             vb.put((byte) (c >> 16)).put((byte) (c >> 8)).put((byte) c).put((byte) (c >> 24));
             vb.put((byte) m.slot()[q]).put(m.sky()[q]).put((byte) 0).put((byte) 0);
@@ -403,25 +410,47 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         GlStateManager._glBufferData(GL15.GL_ARRAY_BUFFER, vb, GL15.GL_STATIC_DRAW);
         GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, skinEbo);
         GlStateManager._enableVertexAttribArray(0);
-        GlStateManager._vertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 28, 0);
+        GlStateManager._vertexAttribPointer(0, 3, GL11.GL_SHORT, false, 20, 0);
         GlStateManager._enableVertexAttribArray(1);
-        GlStateManager._vertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 28, 12);
+        GlStateManager._vertexAttribPointer(1, 2, GL11.GL_SHORT, false, 20, 8);
         GlStateManager._enableVertexAttribArray(2);
-        GlStateManager._vertexAttribPointer(2, 4, GL11.GL_UNSIGNED_BYTE, true, 28, 20);
+        GlStateManager._vertexAttribPointer(2, 4, GL11.GL_UNSIGNED_BYTE, true, 20, 12);
         GlStateManager._enableVertexAttribArray(3);
-        GlStateManager._vertexAttribPointer(3, 4, GL11.GL_UNSIGNED_BYTE, false, 28, 24);
+        GlStateManager._vertexAttribPointer(3, 4, GL11.GL_UNSIGNED_BYTE, false, 20, 16);
         GlStateManager._glBindVertexArray(0);
         MemoryUtil.memFree(vb);
         g.opaqueIndexCount = waterStart * 6;
         g.waterIndexCount = (quads - waterStart) * 6;
         g.indexCount = quads * 6;
         g.origin = m.origin();
-        g.bytes = (long) quads * 4 * 28;
+        g.bytes = (long) quads * 4 * 20;
+        g.posScale = scale;
+        skinQuadsResident += quads; skinPatchesBuilt++;
         g.lastUsedFrame = frame;
         residentBytes += g.bytes;
         uploadsTotal++;
         Gpu old = resident.put(key, g);
         if (old != null) free(old);
+    }
+
+    /** Diagnostics: colours of a few lightmap texels (block 0, sky 15/13/10/5) as the game has them right now, plus the day-time numbers. */
+    static String lightmapDump() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) return "lightmap: no level";
+            GlStateManager._activeTexture(GL13.GL_TEXTURE2);
+            mc.gameRenderer.lightTexture().turnOnLightLayer();
+            ByteBuffer px = MemoryUtil.memAlloc(16 * 16 * 4);
+            GL11.glGetTexImage(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, px);
+            GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+            StringBuilder sb = new StringBuilder(String.format("lightmap (block 0): dayTime=%d skyDarken=%.2f", mc.level.getDayTime(), mc.level.getSkyDarken(1.0f)));
+            for (int sky : new int[]{15, 14, 13, 10, 5}) {
+                int o = (sky * 16) * 4;                       // x = block 0, y = sky
+                sb.append(String.format("  sky%d=(%d,%d,%d)", sky, px.get(o) & 255, px.get(o + 1) & 255, px.get(o + 2) & 255));
+            }
+            MemoryUtil.memFree(px);
+            return sb.toString();
+        } catch (Throwable t) { return "lightmap dump failed: " + t; }
     }
 
     /** Draws the block patches of this frame: opaque first, then the water surfaces blended. Uses the game's block atlas and lightmap. */
@@ -463,6 +492,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                     v3.clear();
                     v3.put((float) (g.origin[0] - cam[0])).put((float) (g.origin[1] - cam[1])).put((float) (g.origin[2] - cam[2])).flip();
                     GlStateManager._glUniform3(kOffset, v3);
+                    GlStateManager._glUniform1(kPosScale, st.floats(g.posScale));
                     GlStateManager._glBindVertexArray(g.vao);
                     GL11.glDrawElements(GL11.GL_TRIANGLES, count, GL11.GL_UNSIGNED_INT, pass == 0 ? 0L : (long) g.opaqueIndexCount * 4L);
                 }
@@ -592,7 +622,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     List<String> stats() {
         return List.of("resident=" + resident.size() + " vram=" + (residentBytes >> 20) + "MB/" + (VRAM_BUDGET_BYTES >> 20) + "MB",
-                "drawn=" + drawnLastFrame + " (block skin " + skinDrawnLastFrame + ") fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
+                "drawn=" + drawnLastFrame + " (block skin " + skinDrawnLastFrame + ", " + (skinPatchesBuilt == 0 ? 0 : skinQuadsResident / skinPatchesBuilt) + " quads/patch avg) fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
                 "prefetch/frame=" + prefetchLastFrame + " queued=" + workers.getQueue().size() + " latency p50/p95/p99 ms=" + String.format("%.0f/%.0f/%.0f", latencyMs.median(), latencyMs.p95(), latencyMs.p99()),
                 "built=" + meshesBuilt + " uploaded=" + uploadsTotal);
     }

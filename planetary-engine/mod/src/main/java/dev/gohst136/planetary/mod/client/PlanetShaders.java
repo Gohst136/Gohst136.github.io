@@ -82,10 +82,11 @@ final class PlanetShaders {
     /** Block skin: quads with atlas sprites tiled per block, lit by the game's own lightmap, positioned like the smooth patches (camera-relative, log depth). */
     static final String SKIN_VERTEX = """
             #version 150
-            in vec3 aPos;
-            in vec2 aUv;
+            in vec3 aPos;             // int16 x3 (scaled by uPosScale)
+            in vec2 aUv;              // int16 x2 (quarter blocks)
             in vec4 aColor;
             in vec4 aInfo;            // x = sprite slot, y = sky light 0..15
+            uniform float uPosScale;
             uniform mat4 uProj;
             uniform mat4 uView;
             uniform vec3 uOffset;
@@ -94,8 +95,8 @@ final class PlanetShaders {
             out vec4 vColor;
             flat out vec2 vInfo;
             void main() {
-                vec3 rel = uOffset + aPos;
-                vUv = aUv;
+                vec3 rel = uOffset + aPos * uPosScale;
+                vUv = aUv * 0.25;
                 vColor = aColor;
                 vInfo = aInfo.xy;
                 vec4 c = uProj * uView * vec4(rel, 1.0);
