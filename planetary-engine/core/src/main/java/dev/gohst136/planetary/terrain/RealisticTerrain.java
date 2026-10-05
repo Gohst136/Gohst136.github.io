@@ -103,7 +103,7 @@ public final class RealisticTerrain implements TerrainSampler {
         double h0 = base + mountain + det * rough;
 
         // ---- rivers --------------------------------------------------------------------------------------------
-        double riverMask = 0.0, carve = 0.0;
+        double riverMask = 0.0, riverTint = 0.0, carve = 0.0;
         if (h0 > 2.0 && landW > 0.0) {
             double fadeHigh = 1.0 - smooth(1800.0, 3200.0, h0);
             for (int s = 0; s < RIVER_FREQ.length && fadeHigh > 0.0; s++) {
@@ -118,6 +118,7 @@ public final class RealisticTerrain implements TerrainSampler {
                 double nv = Math.abs(n.fbm((x + vx) * fr + ox * 3, (y + vy) * fr - oz, (z + vz) * fr + 5.5, 3));
                 double hw = (wEff / radius) * fr * 1.4;
                 double m = (1.0 - smooth(0.0, hw * 2.4, nv)) * fadeHigh;      // soft shoulders: vertex colours interpolate, so hard edges alias into blocks
+                riverTint = Math.max(riverTint, m * Math.pow(Math.min(1.0, RIVER_WIDTH_M[s] / wEff), 0.7));   // colour: a river thinner than a cell is only a faint tint (coverage), not a cell-sized blue dot
                 if (m > riverMask) {
                     riverMask = m;
                     carve = Math.min(0.45 * h0 + 2.0, 4.0 + 0.06 * wEff);
@@ -138,11 +139,11 @@ public final class RealisticTerrain implements TerrainSampler {
         moist = Math.max(0.0, Math.min(1.0, moist));
 
         out[0] = h;
-        colour(h, t, temp, moist, riverMask, cell, x, y, z, out);
+        colour(h, t, temp, moist, riverMask, riverTint, cell, x, y, z, out);
         return new Surface(h, temp, moist, riverMask, t, out[1], out[2], out[3], out[4] > 0.5);
     }
 
-    private void colour(double h, double t, double temp, double moist, double river, double cell,
+    private void colour(double h, double t, double temp, double moist, double river, double riverTint, double cell,
                         double x, double y, double z, double[] out) {
         double[] c = new double[3];
         boolean water;
@@ -187,7 +188,7 @@ public final class RealisticTerrain implements TerrainSampler {
             water = false;
             if (river > 0.0) {
                 double[] rw = {0.08, 0.30, 0.52};
-                SurfacePalette.mix(c, c, rw, smooth(0.08, 0.85, river));
+                SurfacePalette.mix(c, c, rw, smooth(0.08, 0.85, riverTint));
                 water = river > 0.7;
             }
         }
