@@ -185,7 +185,7 @@ public final class PlanetClient {
             TERRAIN = new HybridTerrain(PLANET, macro, vanilla, 1500, 4000, 60, 0.06);
             terrainMode = "hybrid (procedural macro" + (anchor != null ? " flattened 1-8 km around the anchor" : "") + " + vanilla worldgen detail, seed " + PLANET.seed() + ")";
         } else {
-            TERRAIN = dev.gohst136.planetary.mod.world.PlanetWorld.terrain(PLANET.seed());
+            TERRAIN = new dev.gohst136.planetary.terrain.ModifiedTerrain(dev.gohst136.planetary.mod.world.PlanetWorld.terrain(PLANET.seed()), dev.gohst136.planetary.mod.world.PlanetEdits.DB, PLANET.radius(), 2.0);
             terrainMode = "realistic planet (continents, oceans, mountain belts, rivers, climate), seed " + PLANET.seed() + (realWorld ? ", real chunks from the planet generator" : "");
         }
     }
