@@ -1,0 +1,218 @@
+package dev.gohst136.planetary.skin;
+
+import dev.gohst136.planetary.lod.PatchKey;
+import dev.gohst136.planetary.math.Vec3;
+import dev.gohst136.planetary.planet.CubeSphere;
+import dev.gohst136.planetary.planet.PlaneUnwrap;
+import dev.gohst136.planetary.planet.PlanetDefinition;
+import dev.gohst136.planetary.planet.VerticalMap;
+import dev.gohst136.planetary.terrain.RealisticTerrain;
+import dev.gohst136.planetary.world.PlanetColumns;
+import dev.gohst136.planetary.world.PlanetColumns.Column;
+import dev.gohst136.planetary.world.PlanetColumns.Kind;
+
+/**
+ * Far terrain as BLOCKS: a quadtree patch of 32 x 32 cells whose cells are exact powers of two blocks and lie exactly on the vanilla block grid
+ * (see PlaneUnwrap.halfSpan), meshed as flat-topped columns with vertical walls, from the very same column decisions the chunk generator uses
+ * ({@link PlanetColumns}). Drawn with the game's block atlas and lightmap it looks like real chunks seen from afar, and at 1-block cells it IS the
+ * real terrain. Pure Java; thread-safe if the terrain and style are.
+ */
+public final class BlockSkinBuilder {
+    public static final int CELLS = 32;
+    /** Finest quadtree level: cells of exactly 1 block. Coarser levels have cells of 2^(18 - level) blocks. */
+    public static final int FINEST_LEVEL = 18;
+    /** Vanilla face brightness: up 1.0, north/south 0.8, east/west 0.6 (down 0.5 is never visible from outside). */
+    static final float SHADE_UP = 1.0f, SHADE_NS = 0.8f, SHADE_EW = 0.6f;
+    static final double WATER_SURFACE = 0.89;           // a water source block's surface sits 8/9 up
+
+    private final PlanetDefinition planet;
+    private final RealisticTerrain terrain;
+    private final SkinStyle style;
+    private final double half;
+
+    public BlockSkinBuilder(PlanetDefinition planet, RealisticTerrain terrain, SkinStyle style) {
+        this.planet = planet; this.terrain = terrain; this.style = style;
+        this.half = PlaneUnwrap.halfSpan(planet.radius());
+    }
+
+    /** Quad sink with growable arrays; opaque quads and water quads are collected separately. */
+    private static final class Quads {
+        float[] pos = new float[12 * 1024], uv = new float[8 * 1024]; int[] rgba = new int[4 * 1024]; short[] slot = new short[1024]; byte[] sky = new byte[1024];
+        int n;
+        void add(double[] p, double[] u, int c0, int c1, int c2, int c3, int slotId, int skyLevel) {
+            if (n == slot.length) {
+                int cap = n * 2;
+                pos = java.util.Arrays.copyOf(pos, cap * 12); uv = java.util.Arrays.copyOf(uv, cap * 8); rgba = java.util.Arrays.copyOf(rgba, cap * 4);
+                slot = java.util.Arrays.copyOf(slot, cap); sky = java.util.Arrays.copyOf(sky, cap);
+            }
+            for (int i = 0; i < 12; i++) pos[n * 12 + i] = (float) p[i];
+            for (int i = 0; i < 8; i++) uv[n * 8 + i] = (float) u[i];
+            rgba[n * 4] = c0; rgba[n * 4 + 1] = c1; rgba[n * 4 + 2] = c2; rgba[n * 4 + 3] = c3;
+            slot[n] = (short) slotId; sky[n] = (byte) skyLevel;
+            n++;
+        }
+    }
+
+    /** Packs a brightness multiplier and an RGB tint into 0xAARRGGBB. */
+    static int color(float shade, int rgb) {
+        int r = Math.min(255, Math.round(shade * ((rgb >> 16) & 255))), g = Math.min(255, Math.round(shade * ((rgb >> 8) & 255))), b = Math.min(255, Math.round(shade * (rgb & 255)));
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    public SkinMesh build(PatchKey key) {
+        final int n = CELLS;
+        final int shift = FINEST_LEVEL - key.level();
+        if (shift < 0) throw new IllegalArgumentException("block skin has no level finer than " + FINEST_LEVEL);
+        final double cell = (double) (1L << shift);                       // blocks per cell
+        // plane origin of the patch: (i, j) = (0, 0) corner; plane x grows with i, plane z shrinks with j
+        var m0 = PlaneUnwrap.map(CubeSphere.patchDirection(key.face(), key.level(), key.x(), key.y(), 0.0, 0.0), half, 0.0);
+        final double x0 = Math.rint(m0.x1() / cell) * cell, z0 = Math.rint(m0.z1() / cell) * cell - n * cell;    // min corner of the patch in the plane
+
+        // columns of the patch plus a one-cell border (walls and skirts need the neighbours)
+        final int w = n + 2;
+        Column[] col = new Column[w * w];
+        for (int cz = -1; cz <= n; cz++) for (int cx = -1; cx <= n; cx++)
+            col[(cz + 1) * w + (cx + 1)] = PlanetColumns.earth(terrain, half, x0 + (cx + 0.5) * cell, z0 + (cz + 0.5) * cell, cell);
+
+        // patch origin: the sphere point above the patch centre
+        Vec3 cdir = PlaneUnwrap.inverse(x0 + n * cell / 2.0, z0 + n * cell / 2.0, half);
+        double cy = VerticalMap.toMeters(col[(n / 2 + 1) * w + (n / 2 + 1)].groundY() + 1.0);
+        Vec3 origin = cdir.mul(planet.radius() + cy);
+
+        Quads opaque = new Quads(), water = new Quads();
+        double[] p = new double[12], uv = new double[8];
+        double R = planet.radius();
+
+        // per-cell attributes
+        final int nn = n * n;
+        int[] ground = new int[nn], tintTop = new int[nn], sky = new int[nn], waterY = new int[nn], tintW = new int[nn];
+        Kind[] topKind = new Kind[nn];
+        for (int cz = 0; cz < n; cz++) for (int cx = 0; cx < n; cx++) {
+            Column c = col[(cz + 1) * w + (cx + 1)];
+            int i = cz * n + cx;
+            ground[i] = c.groundY(); topKind[i] = c.top(); tintTop[i] = style.tintTop(c);
+            boolean wet = c.waterTopY() > c.groundY();
+            sky[i] = wet ? Math.max(0, 15 - (c.waterTopY() - c.groundY())) : 15;          // water absorbs one level of sky light per block
+            waterY[i] = wet ? c.waterTopY() : Integer.MIN_VALUE;
+            tintW[i] = wet ? style.tintWater(c) : 0;
+        }
+
+        // top faces and water surfaces: runs along x of identical cells become one quad (the sprite is tiled per block, so a long quad looks like many)
+        for (int cz = 0; cz < n; cz++) {
+            int cx = 0;
+            while (cx < n) {
+                int i0 = cz * n + cx, run = 1;
+                while (cx + run < n) {
+                    int i = cz * n + cx + run;
+                    if (ground[i] != ground[i0] || topKind[i] != topKind[i0] || tintTop[i] != tintTop[i0] || sky[i] != sky[i0]) break;
+                    run++;
+                }
+                double px0 = x0 + cx * cell, px1 = x0 + (cx + run) * cell, pz0 = z0 + cz * cell, pz1 = pz0 + cell, len = run * cell;
+                double yTop = ground[i0] + 1.0;
+                corner(p, 0, px0, pz0, yTop, R, origin); corner(p, 1, px0, pz1, yTop, R, origin); corner(p, 2, px1, pz1, yTop, R, origin); corner(p, 3, px1, pz0, yTop, R, origin);
+                uv[0] = 0; uv[1] = 0; uv[2] = 0; uv[3] = cell; uv[4] = len; uv[5] = cell; uv[6] = len; uv[7] = 0;
+                int tc = color(SHADE_UP, tintTop[i0]);
+                opaque.add(p, uv, tc, tc, tc, tc, style.slotTop(topKind[i0]), sky[i0]);
+                cx += run;
+            }
+            cx = 0;
+            while (cx < n) {
+                int i0 = cz * n + cx;
+                if (waterY[i0] == Integer.MIN_VALUE) { cx++; continue; }
+                int run = 1;
+                while (cx + run < n && waterY[cz * n + cx + run] == waterY[i0] && tintW[cz * n + cx + run] == tintW[i0]) run++;
+                double px0 = x0 + cx * cell, px1 = x0 + (cx + run) * cell, pz0 = z0 + cz * cell, pz1 = pz0 + cell, len = run * cell;
+                double yw = waterY[i0] + WATER_SURFACE;
+                corner(p, 0, px0, pz0, yw, R, origin); corner(p, 1, px0, pz1, yw, R, origin); corner(p, 2, px1, pz1, yw, R, origin); corner(p, 3, px1, pz0, yw, R, origin);
+                uv[0] = 0; uv[1] = 0; uv[2] = 0; uv[3] = cell; uv[4] = len; uv[5] = cell; uv[6] = len; uv[7] = 0;
+                int wc = color(SHADE_UP, tintW[i0]);
+                water.add(p, uv, wc, wc, wc, wc, style.slotWater(), 15);
+                cx += run;
+            }
+        }
+
+        // walls: for each of the four sides, runs along the edge of columns with the same wall profile become one quad
+        double skirt = Math.max(2.0, 1.5 * cell);
+        for (int side = 0; side < 4; side++) {
+            boolean alongX = side >= 2;                     // sides 0,1 are -x/+x faces (run along z), sides 2,3 are -z/+z faces (run along x)
+            int lines = n, len = n;
+            for (int line = 0; line < lines; line++) {
+                int k = 0;
+                while (k < len) {
+                    int cx = alongX ? k : line, cz = alongX ? line : k;
+                    // iterate over the cells in this row/column that have a neighbour on this side
+                    Column c = col[(cz + 1) * w + (cx + 1)];
+                    int nxo = side == 0 ? -1 : side == 1 ? 1 : 0, nzo = side == 2 ? -1 : side == 3 ? 1 : 0;
+                    Column nb = col[(cz + 1 + nzo) * w + (cx + 1 + nxo)];
+                    boolean border = alongX ? (side == 2 ? cz == 0 : cz == n - 1) : (side == 0 ? cx == 0 : cx == n - 1);
+                    double bottom = wallBottom(c, nb, border, skirt);
+                    if (Double.isNaN(bottom)) { k++; continue; }
+                    int run = 1;
+                    while (k + run < len) {
+                        int cx2 = alongX ? k + run : cx, cz2 = alongX ? cz : k + run;
+                        Column c2 = col[(cz2 + 1) * w + (cx2 + 1)], nb2 = col[(cz2 + 1 + nzo) * w + (cx2 + 1 + nxo)];
+                        double b2 = wallBottom(c2, nb2, border, skirt);
+                        if (Double.isNaN(b2) || b2 != bottom || c2.groundY() != c.groundY() || c2.top() != c.top() || c2.filler() != c.filler() || style.tintOverlay(c2) != style.tintOverlay(c)) break;
+                        run++;
+                    }
+                    // plane edge of this wall
+                    double ax, az, bx, bz;
+                    if (alongX) { ax = x0 + k * cell; bx = x0 + (k + run) * cell; az = bz = z0 + (side == 2 ? cz * cell : (cz + 1) * cell); }
+                    else { az = z0 + k * cell; bz = z0 + (k + run) * cell; ax = bx = x0 + (side == 0 ? cx * cell : (cx + 1) * cell); }
+                    wallQuads(opaque, p, uv, c, bottom, ax, az, bx, bz, alongX ? SHADE_NS : SHADE_EW, run * cell, R, origin);
+                    k += run;
+                }
+            }
+        }
+        int total = opaque.n + water.n;
+        float[] pos = new float[total * 12], uvs = new float[total * 8]; int[] rgba = new int[total * 4]; short[] slotOut = new short[total]; byte[] skyOut = new byte[total];
+        copy(opaque, 0, pos, uvs, rgba, slotOut, skyOut);
+        copy(water, opaque.n, pos, uvs, rgba, slotOut, skyOut);
+        return new SkinMesh(new double[]{origin.x(), origin.y(), origin.z()}, total, opaque.n, pos, uvs, rgba, slotOut, skyOut);
+    }
+
+    private static void copy(Quads q, int at, float[] pos, float[] uv, int[] rgba, short[] slot, byte[] sky) {
+        System.arraycopy(q.pos, 0, pos, at * 12, q.n * 12); System.arraycopy(q.uv, 0, uv, at * 8, q.n * 8);
+        System.arraycopy(q.rgba, 0, rgba, at * 4, q.n * 4); System.arraycopy(q.slot, 0, slot, at, q.n); System.arraycopy(q.sky, 0, sky, at, q.n);
+    }
+
+    /** Sphere position of plane point (px, pz) at block height y (relative to the patch origin). */
+    private void corner(double[] out, int i, double px, double pz, double y, double R, Vec3 origin) {
+        Vec3 d = PlaneUnwrap.inverse(px, pz, half);
+        Vec3 pt = d.mul(R + VerticalMap.toMeters(y)).sub(origin);
+        out[i * 3] = pt.x(); out[i * 3 + 1] = pt.y(); out[i * 3 + 2] = pt.z();
+    }
+
+    /** Bottom of the wall of {@code c} towards neighbour {@code nb}, or NaN when there is no wall (the neighbour is as high; patch borders get a skirt). */
+    private static double wallBottom(Column c, Column nb, boolean border, double skirt) {
+        int top = c.groundY();
+        if (nb.groundY() < top) {
+            double bottom = nb.groundY() + 1.0;
+            return border ? Math.min(bottom, top + 1.0 - skirt) : bottom;
+        }
+        return border ? top + 1.0 - skirt : Double.NaN;                   // a skirt instead of a wall: the neighbour patch may be coarser or finer
+    }
+
+    /**
+     * Wall quads of column {@code c} along the plane edge (ax,az)-(bx,bz) down to {@code bottom}, segmented by depth below c's surface exactly
+     * like the generator fills a column: the surface block, three filler blocks, then stone.
+     */
+    private void wallQuads(Quads out, double[] p, double[] uv, Column c, double bottom, double ax, double az, double bx, double bz,
+                           float shade, double len, double R, Vec3 origin) {
+        int top = c.groundY();
+        double[] edges = {top + 1.0, top, top - 3.0, bottom};
+        for (int s = 0; s < 3; s++) {
+            double yHi = Math.min(edges[s], top + 1.0), yLo = Math.max(edges[s + 1], bottom);
+            if (yHi <= yLo + 1e-9) continue;
+            Kind kind = s == 0 ? c.top() : (s == 1 ? c.filler() : Kind.STONE);
+            corner(p, 0, ax, az, yHi, R, origin); corner(p, 1, ax, az, yLo, R, origin); corner(p, 2, bx, bz, yLo, R, origin); corner(p, 3, bx, bz, yHi, R, origin);
+            uv[0] = 0; uv[1] = yHi; uv[2] = 0; uv[3] = yLo; uv[4] = len; uv[5] = yLo; uv[6] = len; uv[7] = yHi;
+            int sc = color(shade, 0xFFFFFF);
+            out.add(p, uv, sc, sc, sc, sc, style.slotSide(kind), 15);
+            if (s == 0 && style.slotSideOverlay(kind) >= 0) {
+                int oc = color(shade, style.tintOverlay(c));
+                out.add(p, uv, oc, oc, oc, oc, style.slotSideOverlay(kind), 15);
+            }
+        }
+    }
+}
