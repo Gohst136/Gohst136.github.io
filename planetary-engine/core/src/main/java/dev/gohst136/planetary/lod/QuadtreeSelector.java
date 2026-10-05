@@ -29,7 +29,7 @@ public final class QuadtreeSelector {
 
     public record Params(double thresholdPixels, double hysteresis, int maxLevel, int gridCells,
                          int patchBudget, double velocityDwellSeconds, double maxVelocityRelax) {
-        public static Params defaults() { return new Params(1.0, 0.6, 22, 32, 6000, 0.05, 4.0); }
+        public static Params defaults() { return new Params(1.0, 0.6, 22, 32, 6000, 0.05, 12.0); }   // detail relaxes up to 13x at extreme speed: terrain visible for milliseconds needs no 1 px accuracy
     }
 
     public static final class Result {

@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private static final int GRID = 32;
-    private static final int WORKERS = Math.max(2, Math.min(5, Runtime.getRuntime().availableProcessors() / 2 - 1));   // leave cores for render + server threads
+    private static final int WORKERS = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors() - 4));   // leave cores for the render thread, the server and the OS
     private static final long VRAM_BUDGET_BYTES = Long.getLong("planetary.vramMB", 320L) << 20;
     private static final int MAX_UPLOADS_PER_FRAME = 6;
     private static final int MAX_REQUESTS_PER_FRAME = 64;
