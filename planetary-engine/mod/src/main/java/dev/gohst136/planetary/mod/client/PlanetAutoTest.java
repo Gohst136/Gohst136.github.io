@@ -53,7 +53,21 @@ final class PlanetAutoTest {
             new Vec3(0.7, 0.7, 0).normalize(), new Vec3(0.5, -0.7, -0.5).normalize(),
             new Vec3(0.05, 1, 0.05).normalize(), new Vec3(0.05, -1, 0.05).normalize()};
     private static final double ORBIT_ALT = 9.0e6;
+    // lap benchmark (spec section 12/52): once round the planet at 4,000 km/s, 50 km above the ground
+    private static boolean lap;
+    private static double lapAngle, lapSeconds;
+    private static long lapNanos;
+    private static int lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles;
+    private static final FrameStats lapStats = new FrameStats(8000);
+    private static final double LAP_V = 4.0e6, LAP_ALT = 50_000.0;
+    private static Vec3 lapStartDir, lapAxis;
     private static final int ORBIT_SHOTS = 11;      // 8 planet views + sun at the limb + Moon close-up + Earth from the Moon
+
+    /** Rodrigues rotation of v about the unit axis by angle. */
+    private static Vec3 rotateAbout(Vec3 v, Vec3 axis, double angle) {
+        double c = Math.cos(angle), sn = Math.sin(angle);
+        return v.mul(c).add(axis.cross(v).mul(sn)).add(axis.mul(axis.dot(v) * (1 - c)));
+    }
 
     /** {camera position, look direction} in the home planet's body-fixed axes for orbit-tour shot i. */
     private static Vec3[] orbitShot(int i) {
@@ -149,7 +163,7 @@ final class PlanetAutoTest {
         if (PlanetClient.bubbleLive && mc.player != null) drivePlayer(mc);
     }
 
-    static double scriptedSpeed() { return orbit ? 0.0 : Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
+    static double scriptedSpeed() { return lap ? LAP_V : orbit ? 0.0 : Math.max(5.0, alt / (transit ? 1.0 : 2.0)); }
 
     /** Land point with a height closest to 2000 m (hills/rock rather than ocean or a snow plateau). */
     private static Vec3 targetDir() {
@@ -192,6 +206,14 @@ final class PlanetAutoTest {
 
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
+        if (lap) {                                                           // look along the direction of flight, 12 degrees down
+            Vec3 p = rotateAbout(lapStartDir, lapAxis, lapAngle);
+            Vec3 tangent = lapAxis.cross(p).normalize();
+            Vec3 l = tangent.mul(Math.cos(Math.toRadians(12))).sub(p.mul(Math.sin(Math.toRadians(12)))).normalize();
+            mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
+            mc.player.setYRot((float) Math.toDegrees(Math.atan2(-l.x(), l.z())));
+            return;
+        }
         if (orbit && orbitHold >= 0) {
             Vec3 l = orbitShot(Math.min(orbitIdx, ORBIT_SHOTS - 1))[1];
             mc.player.setXRot((float) Math.toDegrees(-Math.asin(l.y())));
@@ -208,6 +230,14 @@ final class PlanetAutoTest {
     static Vec3 scriptedPosition() {
         if (targetGround == 0) targetGround = PlanetClient.PLANET.radius() + PlanetClient.TERRAIN.heightAt(targetDir());   // true ground incl. flattening + detail
         double groundRadius = targetGround;
+        if (lap) {
+            long now = System.nanoTime();
+            double dt = lapNanos == 0 ? 0 : Math.min(0.1, (now - lapNanos) / 1e9);
+            lapNanos = now;
+            double r = PlanetClient.PLANET.radius() + LAP_ALT;
+            lapAngle += LAP_V / r * dt; lapSeconds += dt;
+            return rotateAbout(lapStartDir, lapAxis, lapAngle).mul(r);
+        }
         if (orbit && orbitHold >= 0) return orbitShot(Math.min(orbitIdx, ORBIT_SHOTS - 1))[0];
         if (transit) {
             if (PlanetClient.realWorld && alt < 420 && !PlanetClient.bubbleLive && PlanetClient.bubble != null && !PlanetClient.chunksReady(Minecraft.getInstance())) {
@@ -266,11 +296,33 @@ final class PlanetAutoTest {
 
             return;
         }
+        if (lap) {
+            if (clearPending) { renderer.clearCache(); clearPending = false; }
+            lapFrames++;
+            lapStats.record(fs.last());
+            int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
+            if (fb > 0) lapFallbackFrames++;
+            if (ho > 0) lapHoleFrames++;
+            lapMaxHoles = Math.max(lapMaxHoles, ho);
+            if (lapAngle >= 2 * Math.PI) {
+                String line = String.format("LAP (one orbit at %.0f km/s, %.0f km above ground): %.1f s, frames=%d fallbackFrames=%d holeFrames=%d (max %d patches) frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | %s | %s",
+                        LAP_V / 1000, LAP_ALT / 1000, lapSeconds, lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles,
+                        lapStats.average(), lapStats.p95(), lapStats.p99(), lapStats.worst(), renderer.latencySummary(), renderer.stats().get(0));
+                System.out.println("[planetary-autotest] " + line);
+                try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
+                lap = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
+            }
+            return;
+        }
         if (orbit) {
             if (++orbitHold < 40 || (!renderer.settled() && orbitHold < 600)) return;
             pendingName = String.format("orbit_%d.png", orbitIdx);
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
-            if (orbitIdx >= ORBIT_SHOTS) { orbit = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; }
+            if (orbitIdx >= ORBIT_SHOTS) {
+                orbit = false; lap = true; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0;
+                lapStartDir = new Vec3(1, 0, 0); lapAxis = new Vec3(0, 0, 1);
+                clearPending = true; stage("lap");                          // cold cache: a lap must really stream
+            }
             return;
         }
         if (stop >= STOPS.length) return;
