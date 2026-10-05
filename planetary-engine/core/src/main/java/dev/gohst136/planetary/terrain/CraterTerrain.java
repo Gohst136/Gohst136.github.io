@@ -16,14 +16,19 @@ public final class CraterTerrain implements TerrainSampler {
     private final Noise3 n;
     private final double radius;
     private final double[] tint;
+    private final double scale;                                  // vertical relief factor (1 = full-size relief)
 
     private static final int SCALES = 22;                  // crater diameters from 0.16 of the radius down by 1.7x per scale, to ~ 2 m on the Moon
     private static final double BASE_DIAMETER_FRACTION = 0.16, SHRINK = 1.7;
 
-    public CraterTerrain(PlanetDefinition planet) { this(planet, 1.03, 1.0, 0.96); }
+    public CraterTerrain(PlanetDefinition planet) { this(planet, 1.03, 1.0, 0.96, 1.0); }
 
     /** @param tintR/G/B colour multipliers of the grey albedo (Moon: nearly neutral, Mars-like: rust). */
-    public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB) {
+    public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB) { this(planet, tintR, tintG, tintB, 1.0); }
+
+    /** @param reliefScale scales all heights: the real chunk dimension is 1536 blocks high, so a body that is meant to be walked on keeps its shape but with reduced relief. */
+    public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB, double reliefScale) {
+        this.scale = reliefScale;
         this.planet = planet; this.n = new Noise3(planet.seed() ^ 0x4D6F6F6EL); this.radius = planet.radius();
         this.tint = new double[]{tintR, tintG, tintB};
     }
@@ -81,7 +86,7 @@ public final class CraterTerrain implements TerrainSampler {
             det += fade * amp * n.noise(x * f + 11, y * f - 5, z * f + 2);
             amp *= 0.7; f *= 2.0;
         }
-        double height = h - craterDepth + ejecta + det;
+        double height = scale * (h - craterDepth + ejecta + det);
         height = Math.max(-planet.maxDepth(), Math.min(planet.maxHeight(), height));
         // albedo: dark basins, bright fresh crater rims/ejecta, slight noise
         double base = 0.55 - 0.28 * mare + 0.18 * Math.min(1.0, ejecta / 300.0) - 0.05 * Math.min(1.0, craterDepth / 800.0);
@@ -106,11 +111,11 @@ public final class CraterTerrain implements TerrainSampler {
             if (2.0 * Math.PI * radius / f < 2.0 * cell) sq += amp * amp * 0.25;
             amp *= 0.7; f *= 2.0;
         }
-        return Math.sqrt(sq);
+        return scale * Math.sqrt(sq);
     }
 
     /** Heuristic bound (craters are bowls with steep rims). */
-    @Override public double slopeBound() { return 25.0; }
+    @Override public double slopeBound() { return 25.0 * scale; }
 
     private static long hash(long x, long y, long z, long s) {
         long h = (x * 0x9E3779B97F4A7C15L) ^ (y * 0xC2B2AE3D27D4EB4FL) ^ (z * 0x165667B19E3779F9L) ^ (s * 0x27D4EB2F165667C5L);

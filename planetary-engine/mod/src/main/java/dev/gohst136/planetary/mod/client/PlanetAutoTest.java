@@ -455,9 +455,9 @@ final class PlanetAutoTest {
             Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
             look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
         }
-        double ground = PlanetClient.bubbleGroundRadius;
-        Vec3 planetPos = d.mul(ground + a);
-        double[] v = frame.vanillaPos(planetPos);
+        // Y from the real ground column: groundY + altitude (the vertical map is only 1:1 near the ground; this keeps the player above it for any body)
+        double[] v = frame.vanillaPos(d.mul(PlanetClient.bubbleGroundRadius));
+        v[1] += a;
         float[] yp = frame.yawPitch(look);
         PlanetClient.teleportReal(v[0], v[1] - mc.player.getEyeHeight(), v[2], yp[0], yp[1]);
     }
