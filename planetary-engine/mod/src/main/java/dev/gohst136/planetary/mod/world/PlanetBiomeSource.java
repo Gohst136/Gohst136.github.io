@@ -93,6 +93,10 @@ public final class PlanetBiomeSource extends BiomeSource {
         }
         if (h < 4.0 && s.continental() < 0.045) return t < -4 ? Biomes.SNOWY_BEACH : Biomes.BEACH;
         if (h > 2800.0) return t < 0 ? Biomes.FROZEN_PEAKS : Biomes.STONY_PEAKS;
+        // Vanilla lowers a biome's temperature with ABSOLUTE height and snows below 0.15: plains (0.8) snow above ~600 m, forest (0.7)
+        // above ~520 m, jungle (0.95) above ~720 m. Warm uplands therefore get the hot biomes (temperature 2.0), which never snow;
+        // RealisticTerrain colours the same region as savanna/desert so mesh and blocks agree (see WARM_UPLAND_FROM_M).
+        if (h > RealisticTerrain.WARM_UPLAND_FROM_M && h <= 1500.0 && t > 5.0) return m < 0.2 ? Biomes.DESERT : Biomes.SAVANNA_PLATEAU;
         if (h > 1500.0) return t < -2 ? Biomes.SNOWY_SLOPES : (m > 0.5 ? Biomes.WINDSWEPT_FOREST : Biomes.WINDSWEPT_HILLS);
         if (t < -10) return Biomes.SNOWY_PLAINS;
         if (t < -3) return m > 0.4 ? Biomes.SNOWY_TAIGA : Biomes.SNOWY_PLAINS;

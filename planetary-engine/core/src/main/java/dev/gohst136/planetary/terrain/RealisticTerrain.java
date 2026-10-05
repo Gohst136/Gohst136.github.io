@@ -26,6 +26,9 @@ public final class RealisticTerrain implements TerrainSampler {
     private final Noise3 n;
     private final double radius;
 
+    /** Above this height warm land counts as upland savanna/desert (vanilla would snow its normal biomes there). */
+    public static final double WARM_UPLAND_FROM_M = 450.0;
+
     /** Chosen so about 30% of the surface is land (checked by test). */
     private static final double LAND_BIAS = 0.06;
     private static final double DETAIL_AMP = 200.0, DETAIL_PERSIST = 0.78, DETAIL_FREQ = 40.0;
@@ -163,6 +166,8 @@ public final class RealisticTerrain implements TerrainSampler {
             SurfacePalette.mix(c, c, rain, smooth(0.72, 0.92, moist) * smooth(20.0, 25.0, temp));
             SurfacePalette.mix(c, c, taiga, smooth(8.0, -2.0, temp) * smooth(0.25, 0.55, moist));
             SurfacePalette.mix(c, c, tundra, smooth(2.0, -8.0, temp));
+            double upland = smooth(WARM_UPLAND_FROM_M - 100.0, WARM_UPLAND_FROM_M + 100.0, h) * smooth(3.0, 7.0, temp) * (1.0 - smooth(1500.0, 2400.0, h));
+            SurfacePalette.mix(c, c, moist < 0.2 ? desert : savanna, upland);
             SurfacePalette.mix(c, c, rock, smooth(1400.0, 3200.0, h) * 0.85);
             SurfacePalette.mix(c, c, snow, Math.max(smooth(-7.0, -19.0, temp), smooth(3600.0, 4800.0, h)));
             SurfacePalette.mix(c, c, sand, (1.0 - smooth(1.0, 9.0, h)) * smooth(-0.002, 0.02, t) * (1.0 - smooth(-2.0, 6.0, -temp)));
