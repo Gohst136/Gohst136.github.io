@@ -25,6 +25,8 @@ public final class BlockSkinBuilder {
     static final float SHADE_UP = 1.0f, SHADE_NS = 0.8f, SHADE_EW = 0.6f;
     /** Coarse walls: the exact 1-block walls average 0.44 brightness (shade x AO of the bottom rows), plain shade would give 0.56 (measured by SkinAoStatsTest). */
     static final float COARSE_WALL_AO = 0.78f;
+    /** AO strength by level: exact at 1-block cells (where it must equal the real chunks), fading towards the smooth planet (which has none) so that no brightness step shows where the two meet. */
+    static float aoStrength(int level) { return level >= FINEST_LEVEL ? 1f : Math.max(0.3f, 1f - 0.2f * (FINEST_LEVEL - level)); }
     static final double WATER_SURFACE = 0.89;           // a water source block's surface sits 8/9 up
 
     private final PlanetDefinition planet;
@@ -128,7 +130,7 @@ public final class BlockSkinBuilder {
                 int g0 = PlanetColumns.earth(terrain, half, mx, mz, 1.0).groundY();
                 boolean s1 = PlanetColumns.earth(terrain, half, mx + sx, mz, 1.0).groundY() > g0, s2 = PlanetColumns.earth(terrain, half, mx, mz + sz, 1.0).groundY() > g0;
                 boolean cn = PlanetColumns.earth(terrain, half, mx + sx, mz + sz, 1.0).groundY() > g0;
-                aoFactor[i] = 1f - 0.2f * ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
+                aoFactor[i] = 1f - aoStrength(key.level()) * 0.2f * ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
             }
         }
 
@@ -205,7 +207,7 @@ public final class BlockSkinBuilder {
                         double ax, az, bx, bz;
                         if (alongX) { ax = x0 + k * cell; bx = x0 + (k + run) * cell; az = bz = z0 + (side == 2 ? cz * cell : (cz + 1) * cell); }
                         else { az = z0 + k * cell; bz = z0 + (k + run) * cell; ax = bx = x0 + (side == 0 ? cx * cell : (cx + 1) * cell); }
-                        wallQuads(opaque, p, uv, c, bottom, ax, az, bx, bz, alongX ? SHADE_NS : SHADE_EW, run * cell, R, origin);
+                        wallQuads(opaque, p, uv, c, bottom, ax, az, bx, bz, alongX ? SHADE_NS : SHADE_EW, run * cell, R, origin, 1f - (1f - COARSE_WALL_AO) * aoStrength(key.level()));
                         k += run;
                     }
                 }
@@ -325,7 +327,7 @@ public final class BlockSkinBuilder {
      * like the generator fills a column: the surface block, three filler blocks, then stone.
      */
     private void wallQuads(Quads out, double[] p, double[] uv, Column c, double bottom, double ax, double az, double bx, double bz,
-                           float shade, double len, double R, Vec3 origin) {
+                           float shade, double len, double R, Vec3 origin, float wallAo) {
         int top = c.groundY();
         double[] edges = {top + 1.0, top, top - 3.0, bottom};
         for (int s = 0; s < 3; s++) {
@@ -334,10 +336,10 @@ public final class BlockSkinBuilder {
             Kind kind = s == 0 ? c.top() : (s == 1 ? c.filler() : Kind.STONE);
             corner(p, 0, ax, az, yHi, R, origin); corner(p, 1, ax, az, yLo, R, origin); corner(p, 2, bx, bz, yLo, R, origin); corner(p, 3, bx, bz, yHi, R, origin);
             uv[0] = 0; uv[1] = -yHi; uv[2] = 0; uv[3] = -yLo; uv[4] = len; uv[5] = -yLo; uv[6] = len; uv[7] = -yHi;      // texture v grows downward
-            int sc = color(shade * COARSE_WALL_AO, 0xFFFFFF);
+            int sc = color(shade * wallAo, 0xFFFFFF);
             out.add(p, uv, sc, sc, sc, sc, style.slotSide(kind), 15);
             if (s == 0 && style.slotSideOverlay(kind) >= 0) {
-                int oc = color(shade * COARSE_WALL_AO, style.tintOverlay(c));
+                int oc = color(shade * wallAo, style.tintOverlay(c));
                 out.add(p, uv, oc, oc, oc, oc, style.slotSideOverlay(kind), 15);
             }
         }
