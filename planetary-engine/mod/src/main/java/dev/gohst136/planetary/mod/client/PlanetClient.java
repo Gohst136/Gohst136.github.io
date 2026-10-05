@@ -100,6 +100,7 @@ public final class PlanetClient {
     static BubbleFrame bubble;                 // frame exists once the real player has been parked at the anchor
     static double bubbleGroundRadius;          // planet radius + terrain height at the anchor (metres from the planet centre)
     static boolean bubbleLive;                 // the camera is the real player's (handoff done)
+    static boolean handoffEnabled = true;      // the benchmark switches the automatic landing off while it flies orbit shots and laps
     static String bubbleBody = "earth";        // body the anchor / bubble belongs to ("earth" or "moon")
     static boolean moonFixed;                  // free flight near the Moon: camera stored in the Moon-fixed frame
     static Vec3 posM = Vec3.ZERO;
@@ -200,6 +201,7 @@ public final class PlanetClient {
      * the real chunks appear on top of it.
      */
     private static void handoff(Minecraft mc, String body, Vec3 posBody, Vec3 fwdBody, double alt) {
+        if (!handoffEnabled) return;
         boolean moon = body.equals("moon");
         if (moon ? !realWorld : (!realWorld && vanilla == null)) return;
         if (mc.getSingleplayerServer() == null || mc.player == null) return;
@@ -268,6 +270,12 @@ public final class PlanetClient {
             if (!st.isAir() && !st.is(net.minecraft.tags.BlockTags.LEAVES) && !st.is(net.minecraft.tags.BlockTags.LOGS) && st.blocksMotion()) return y;
         }
         return Integer.MIN_VALUE;
+    }
+
+    /** Camera state summary for the benchmark log. */
+    static String cameraDiag() {
+        return String.format("camera: posE=%.0f km (alt %.0f km) posM=%.0f km moonFixed=%b inertial=%b bubbleBody=%s handoff=%b anchor=%s",
+                pos.length() / 1000, (pos.length() - PLANET.radius()) / 1000, posM.length() / 1000, moonFixed, inertial, bubbleBody, handoffEnabled, anchor == null ? "none" : "set");
     }
 
     /** One-line state of the real-world bubble for the benchmark log. */
@@ -542,6 +550,7 @@ public final class PlanetClient {
 
         // predictive streaming: where will the camera be in 0.5 s / 1.5 s? Load what it will need, ordered by time-to-visibility
         if (lastPos != null && dt > 1e-4) velocity = velocity.mul(0.7).add(pos.sub(lastPos).mul(0.3 / dt));
+        if (lastPos != null && pos.distance(lastPos) > 5.0e5) velocity = Vec3.ZERO;          // a jump (teleport between benchmark shots), not a flight
         lastPos = pos;
         if (bubbleLive && velocity.length() > 300.0) velocity = Vec3.ZERO;      // a teleport, not a flight: never prefetch along it
         if (velocity.length() > 1.0) {

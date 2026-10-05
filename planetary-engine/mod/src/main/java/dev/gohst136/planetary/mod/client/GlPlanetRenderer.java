@@ -315,7 +315,11 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     }
 
     private void drainUploads() {
-        for (int i = 0; i < MAX_UPLOADS_PER_FRAME; i++) {
+        // 6 per frame normally; a backlog (teleport, lap) gets up to 40 per frame but never more than ~3 ms of upload work
+        int budget = finished.size() > 64 ? 40 : MAX_UPLOADS_PER_FRAME;
+        long t0 = System.nanoTime();
+        for (int i = 0; i < budget; i++) {
+            if (i >= MAX_UPLOADS_PER_FRAME && System.nanoTime() - t0 > 3_000_000L) return;
             Built b = finished.poll();
             if (b == null) return;
             inFlight.remove(b.key());
@@ -370,6 +374,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             workers.execute(new Job(prio, k.level(), jobSeq.incrementAndGet(), () -> {
                 try {
                     if (frame - wanted.getOrDefault(k, 0L) > STALE_FRAMES) { inFlight.remove(k); requestedAt.remove(k); return; }
+                    if (finished.size() > 600) { inFlight.remove(k); requestedAt.remove(k); return; }          // uploads are behind: do not build what cannot be uploaded; it is re-requested if still needed
                     finished.add(new Built(k, builder.build(k, GRID)));
                     meshesBuilt.incrementAndGet();
                 } catch (Throwable t) { inFlight.remove(k); requestedAt.remove(k); }

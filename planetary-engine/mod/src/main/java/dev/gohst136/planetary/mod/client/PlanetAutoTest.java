@@ -361,13 +361,13 @@ final class PlanetAutoTest {
             if (pendingName != null) return;
             pendingName = String.format("moon_%08.0fm.png", MOON_STOPS[moonStop]);
             String line = String.format("MOON alt=%.0fm patches=%d maxLevel=%d | moon %s", MOON_STOPS[moonStop], in.last == null ? 0 : in.last.patches.size(),
-                    in.last == null ? -1 : in.last.maxLevel, in.renderer.stats().get(0) + " " + in.renderer.stats().get(1)) + "\n   " + PlanetClient.bubbleDiag();
+                    in.last == null ? -1 : in.last.maxLevel, in.renderer.stats().get(0) + " " + in.renderer.stats().get(1)) + "\n   " + PlanetClient.cameraDiag() + "\n   " + PlanetClient.bubbleDiag();
             System.out.println("[planetary-autotest] " + line);
             try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
             moonStop++; moonHold = 0; stage("moon stop " + moonStop);
             if (moonStop >= MOON_STOPS.length) {
                 moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
-                PlanetClient.leaveBubble(); PlanetClient.moonFixed = false; PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = targetDir();
+                PlanetClient.leaveBubble(); PlanetClient.moonFixed = false; PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = targetDir(); PlanetClient.handoffEnabled = true;
             }
             return;
         }
@@ -392,6 +392,7 @@ final class PlanetAutoTest {
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
                 lap = false; moonPhase = true; moonAlt = 2.0e6; moonStop = 0; moonHold = 0; stage("moon");
+                PlanetClient.leaveBubble(); PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = null; PlanetClient.handoffEnabled = true;
             }
             return;
         }
@@ -400,6 +401,7 @@ final class PlanetAutoTest {
             pendingName = String.format("orbit_%d.png", orbitIdx);
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
             if (orbitIdx >= ORBIT_SHOTS) {
+                PlanetClient.leaveBubble(); PlanetClient.handoffEnabled = false;
                 orbit = false; lap = true; lapShot = false; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0; lapFallbackPatches = lapSelectedPatches = 0;
                 lapStartDir = new Vec3(1, 0, 0); lapAxis = new Vec3(0, 0, 1);
                 clearPending = true; stage("lap");                          // cold cache: a lap must really stream
@@ -422,7 +424,7 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0; stage("stop " + stop);
-        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; PlanetClient.leaveBubble(); }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
+        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; PlanetClient.leaveBubble(); PlanetClient.handoffEnabled = false; }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }
