@@ -55,8 +55,8 @@ class RealisticTerrainTest {
         for (double cell : new double[]{30_000, 2_000, 100, 5}) {
             int land = 0, water = 0; double[] o = new double[5];
             for (int i = 0; i < 20000; i++) {
-                t.sampleSurface(rnd(r), cell, o);
-                if (o[0] > 5) { land++; if (o[4] > 0.5) water++; }
+                var sf = t.surface(rnd(r), cell);
+                if (sf.height() > 5) { land++; if (sf.river() > 0.7) water++; }
             }
             double f = water / (double) land;
             System.out.printf("cell %.0f m: river fraction of land %.4f%n", cell, f);

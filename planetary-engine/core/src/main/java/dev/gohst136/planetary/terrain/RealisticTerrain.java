@@ -189,7 +189,7 @@ public final class RealisticTerrain implements TerrainSampler {
             if (river > 0.0) {
                 double[] rw = {0.08, 0.30, 0.52};
                 SurfacePalette.mix(c, c, rw, smooth(0.08, 0.85, riverTint));
-                water = river > 0.7;
+                water = riverTint > 0.7;                                      // glossy only when the river really covers the cell
             }
         }
         out[1] = c[0]; out[2] = c[1]; out[3] = c[2];
