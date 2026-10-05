@@ -428,7 +428,7 @@ public final class PlanetClient {
         if (velocity.length() > 1.0) {
             for (int i = 0; i < 2; i++) {
                 double horizon = i == 0 ? 0.5 : 1.5;
-                Vec3 pp = pos.add(velocity.mul(horizon));
+                Vec3 pp = Vec3.predictAround(pos, velocity, horizon);         // follow the planet's curve, not the tangent
                 double predMinR = PLANET.radius() + 2.0;
                 if (pp.length() < predMinR) pp = pp.normalize().mul(predMinR);
                 var pv = new CameraView(pp, fwd, camUp, fovY, h, w, speed);

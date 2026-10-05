@@ -54,7 +54,7 @@ final class PlanetAutoTest {
             new Vec3(0.05, 1, 0.05).normalize(), new Vec3(0.05, -1, 0.05).normalize()};
     private static final double ORBIT_ALT = 9.0e6;
     // lap benchmark (spec section 12/52): once round the planet at 4,000 km/s, 50 km above the ground
-    private static boolean lap;
+    private static boolean lap, lapShot;
     private static double lapAngle, lapSeconds;
     private static long lapNanos;
     private static int lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles;
@@ -84,8 +84,8 @@ final class PlanetAutoTest {
             Vec3 toSunFromMoon = sun.mul(1.0);                               // the sun is ~1 AU away: the direction is the same everywhere
             return new Vec3[]{moon.add(toSunFromMoon.mul(4.0e6)), toSunFromMoon.mul(-1)};
         }
-        Vec3 toEarth = moon.mul(-1).normalize();                             // Earth seen from 3,000 km above the Moon's surface
-        return new Vec3[]{moon.add(toEarth.mul(1.737e6 + 3.0e6)), toEarth};
+        // Earth (and, if lucky, the Moon beside it) seen from 1.2 million km on the sunward side: a fully lit disc
+        return new Vec3[]{sun.mul(1.2e9), sun.mul(-1)};
     }
     private static int landingTick;
     private static boolean clearPending;
@@ -300,6 +300,7 @@ final class PlanetAutoTest {
             if (clearPending) { renderer.clearCache(); clearPending = false; }
             lapFrames++;
             lapStats.record(fs.last());
+            if (!lapShot && lapAngle >= Math.PI && pendingName == null) { pendingName = "lap_mid.png"; lapShot = true; }
             int fb = renderer.fallbackLastFrame(), ho = renderer.holesLastFrame();
             if (fb > 0) lapFallbackFrames++;
             if (ho > 0) lapHoleFrames++;
@@ -319,7 +320,7 @@ final class PlanetAutoTest {
             pendingName = String.format("orbit_%d.png", orbitIdx);
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
             if (orbitIdx >= ORBIT_SHOTS) {
-                orbit = false; lap = true; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0;
+                orbit = false; lap = true; lapShot = false; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0;
                 lapStartDir = new Vec3(1, 0, 0); lapAxis = new Vec3(0, 0, 1);
                 clearPending = true; stage("lap");                          // cold cache: a lap must really stream
             }
