@@ -65,7 +65,10 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final PlanetDefinition planet;
     private int atmoProgram = -1, atmoVao;
     private boolean atmoFailed;
-    private int aInvProj, aView, aUp, aSun, aR0, aH0, aR, aAtmH, aOccC, aOccR;
+    private int aInvProj, aView, aUp, aSun, aR0, aH0, aR, aAtmH, aOccC, aOccR, aClouds, aTime;
+    /** Planetary clouds on/off and the clock (set by the client each frame). */
+    static volatile boolean cloudsOn = true;
+    static volatile float cloudTime;
     /** Occluders for the sky pass (set each frame by the client): camera-relative centres (E axes) and radii of the other bodies. */
     static final float[] occC = new float[6], occR = new float[2];
     private final Map<PatchKey, Gpu> resident = new HashMap<>();
@@ -263,6 +266,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                 aAtmH = GlStateManager._glGetUniformLocation(atmoProgram, "uAtmH");
                 aOccC = GlStateManager._glGetUniformLocation(atmoProgram, "uOccC");
                 aOccR = GlStateManager._glGetUniformLocation(atmoProgram, "uOccR");
+                aClouds = GlStateManager._glGetUniformLocation(atmoProgram, "uClouds");
+                aTime = GlStateManager._glGetUniformLocation(atmoProgram, "uTime");
                 atmoVao = GlStateManager._glGenVertexArrays();
             }
         } catch (RuntimeException e) {
@@ -289,6 +294,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             GlStateManager._glUniform1(aH0, st.floats((float) (r0 - planet.radius())));
             GlStateManager._glUniform1(aR, st.floats((float) planet.radius()));
             GlStateManager._glUniform1(aAtmH, st.floats((float) planet.atmosphereHeight()));
+            GlStateManager._glUniform1(aClouds, st.floats(cloudsOn ? 1f : 0f));
+            GlStateManager._glUniform1(aTime, st.floats(cloudTime));
             FloatBuffer oc = st.mallocFloat(6); oc.put(occC).flip();
             GlStateManager._glUniform3(aOccC, oc);
             FloatBuffer orr = st.mallocFloat(2); orr.put(occR).flip();

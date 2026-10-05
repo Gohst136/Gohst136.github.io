@@ -380,6 +380,7 @@ public final class PlanetClient {
         lastNanos = now;
         FRAMES.record(dt * 1000.0);
         simTime += dt * timeScale;
+        GlPlanetRenderer.cloudTime = (float) (simTime % 1.0e6);
 
         var cam = e.getCamera();
         var look = cam.getLookVector();

@@ -104,6 +104,8 @@ final class PlanetShaders {
             uniform float uH0;        // camera altitude above the baseline radius (precise, from double)
             uniform float uR;         // planet baseline radius
             uniform float uAtmH;      // atmosphere height
+            uniform float uClouds;    // 1 = draw the planetary cloud layer
+            uniform float uTime;      // simulation seconds (cloud drift)
             uniform vec3 uOccC[2];    // other bodies that can hide stars and the sun: centre relative to the camera (E axes) ...
             uniform float uOccR[2];   // ... and radius (0 = unused)
             out vec4 fragColor;
@@ -121,6 +123,39 @@ final class PlanetShaders {
                 if (disc < 0.0) return vec2(1.0, -1.0);
                 float q = sqrt(disc);
                 return vec2(-b - q, -b + q);
+            }
+
+            float ch3(vec3 p) {
+                p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
+                p *= 17.0;
+                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+            }
+            float vnoise(vec3 x) {
+                vec3 i = floor(x), f = fract(x);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(mix(ch3(i), ch3(i + vec3(1, 0, 0)), f.x), mix(ch3(i + vec3(0, 1, 0)), ch3(i + vec3(1, 1, 0)), f.x), f.y),
+                           mix(mix(ch3(i + vec3(0, 0, 1)), ch3(i + vec3(1, 0, 1)), f.x), mix(ch3(i + vec3(0, 1, 1)), ch3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+            }
+            float cfbm(vec3 p, int oct) {
+                float a = 0.5, s = 0.0;
+                for (int i = 0; i < 9; i++) {
+                    if (i >= oct) break;
+                    s += a * vnoise(p);
+                    p = p * 2.03 + vec3(7.1, 3.3, 5.2);
+                    a *= 0.5;
+                }
+                return s;
+            }
+            // cloud cover at unit direction q; dist = camera distance (m): nearer clouds get finer octaves
+            float cloudDensity(vec3 q, float dist) {
+                vec3 drift = vec3(uTime * 2.0e-5, 0.0, uTime * 1.2e-5);
+                vec3 w = vec3(cfbm(q * 3.0 + 4.0, 3), cfbm(q * 3.0 + 9.0, 3), cfbm(q * 3.0 + 1.0, 3)) - 0.5;
+                vec3 p = q * 5.0 + 1.1 * w + drift;
+                int oct = 5 + int(clamp(4.0 * (1.0 - dist / 4.0e5), 0.0, 4.0));
+                float f = cfbm(p, oct);
+                float lat = abs(q.z);                                   // planet z = spin axis
+                float bands = 0.62 + 0.38 * cos(lat * 9.4247);           // wet near the equator and near 60 deg, dry subtropics
+                return smoothstep(0.50, 0.74, f * (0.75 + 0.5 * bands));
             }
 
             float hash3(vec3 p) {
@@ -201,7 +236,31 @@ final class PlanetShaders {
                 }
                 float tView = exp(-(BR.g * odR + BM * 1.1 * odM));
                 vec3 col = 1.0 - exp(-L * 22.0);
-                fragColor = vec4(col + starCol * tView, tView);   // stars shine through the atmosphere, dimmed
+                float cA = 0.0; vec3 cC = vec3(0.0);
+                if (uClouds > 0.5) {
+                    vec2 sh = sphere(mu, 4000.0);
+                    float sc = -1.0;
+                    if (uH0 > 4000.0) { if (sh.x > 0.0) sc = sh.x; } else if (sh.y > 0.0) sc = sh.y;
+                    float tGround = hitsPlanet ? gnd.x : 1.0e30;
+                    if (sc > 0.0 && sc < tGround) {
+                        vec3 P = uR0 * uUp + sc * d;
+                        vec3 q = normalize(P);
+                        float dens = cloudDensity(q, sc);
+                        if (dens > 0.001) {
+                            float sunUp = dot(q, uSun);
+                            vec3 tang = normalize(uSun - q * sunUp + 1.0e-4);
+                            float dens2 = cloudDensity(normalize(q + tang * 0.004), sc);    // density a bit towards the sun: self shadow
+                            float shade = mix(1.0, 0.55, clamp((dens - dens2) * 3.0, 0.0, 1.0));
+                            float lit = clamp(sunUp * 1.1 + 0.18, 0.0, 1.0);
+                            float edge = pow(1.0 - clamp(abs(mu), 0.0, 1.0), 2.0);           // limb: thicker slab seen at a grazing angle
+                            cA = clamp(dens * (0.82 + 0.25 * edge), 0.0, 0.96);
+                            // the sun's light reaching the cloud is reddened near the terminator (path through air), tinted by the atmosphere's own colour
+                            vec3 sunCol = mix(vec3(1.0, 0.55, 0.30), vec3(1.0, 0.98, 0.94), smoothstep(-0.05, 0.35, sunUp));
+                            cC = sunCol * (0.06 + 0.94 * lit) * shade;
+                        }
+                    }
+                }
+                fragColor = vec4(col + starCol * tView * (1.0 - cA) + cC * cA, tView * (1.0 - cA));   // stars shine through the atmosphere, dimmed; clouds cover ground and stars
             }
             """;
 
