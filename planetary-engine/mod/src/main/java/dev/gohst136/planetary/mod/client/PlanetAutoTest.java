@@ -58,6 +58,7 @@ final class PlanetAutoTest {
     private static double lapAngle, lapSeconds;
     private static long lapNanos;
     private static int lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles;
+    private static long lapFallbackPatches, lapSelectedPatches;      // patch-weighted share of selected patches drawn through a coarser ancestor
     private static final FrameStats lapStats = new FrameStats(8000);
     private static final double LAP_V = 4.0e6, LAP_ALT = 50_000.0;
     private static Vec3 lapStartDir, lapAxis;
@@ -309,9 +310,10 @@ final class PlanetAutoTest {
             if (fb > 0) lapFallbackFrames++;
             if (ho > 0) lapHoleFrames++;
             lapMaxHoles = Math.max(lapMaxHoles, ho);
+            lapFallbackPatches += fb; lapSelectedPatches += r.patches.size();
             if (lapAngle >= 2 * Math.PI) {
-                String line = String.format("LAP (one orbit at %.0f km/s, %.0f km above ground): %.1f s, frames=%d fallbackFrames=%d holeFrames=%d (max %d patches) frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | %s | %s",
-                        LAP_V / 1000, LAP_ALT / 1000, lapSeconds, lapFrames, lapFallbackFrames, lapHoleFrames, lapMaxHoles,
+                String line = String.format("LAP (one orbit at %.0f km/s, %.0f km above ground): %.1f s, frames=%d fallbackFrames=%d (patch-weighted fallback share %.1f%%) holeFrames=%d (max %d patches) frame ms avg=%.1f p95=%.1f p99=%.1f worst=%.1f | %s | %s",
+                        LAP_V / 1000, LAP_ALT / 1000, lapSeconds, lapFrames, lapFallbackFrames, 100.0 * lapFallbackPatches / Math.max(1, lapSelectedPatches), lapHoleFrames, lapMaxHoles,
                         lapStats.average(), lapStats.p95(), lapStats.p99(), lapStats.worst(), renderer.latencySummary(), renderer.stats().get(0));
                 System.out.println("[planetary-autotest] " + line);
                 try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
@@ -324,7 +326,7 @@ final class PlanetAutoTest {
             pendingName = String.format("orbit_%d.png", orbitIdx);
             orbitIdx++; orbitHold = 0; stage("orbit " + orbitIdx);
             if (orbitIdx >= ORBIT_SHOTS) {
-                orbit = false; lap = true; lapShot = false; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0;
+                orbit = false; lap = true; lapShot = false; lapAngle = 0; lapSeconds = 0; lapNanos = 0; lapFrames = lapFallbackFrames = lapHoleFrames = lapMaxHoles = 0; lapFallbackPatches = lapSelectedPatches = 0;
                 lapStartDir = new Vec3(1, 0, 0); lapAxis = new Vec3(0, 0, 1);
                 clearPending = true; stage("lap");                          // cold cache: a lap must really stream
             }

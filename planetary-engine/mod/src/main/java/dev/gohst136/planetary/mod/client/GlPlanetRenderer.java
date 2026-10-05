@@ -404,6 +404,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         });
     }
 
+    int drawnLastFrame() { return drawnLastFrame; }
     int fallbackLastFrame() { return fallbackLastFrame; }
     int holesLastFrame() { return holesLastFrame; }
 
