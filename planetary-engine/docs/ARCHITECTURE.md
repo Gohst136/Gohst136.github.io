@@ -108,3 +108,10 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
 - `PlanetSync` (NeoForge payloads, optional so vanilla clients can still join): full snapshot on join, then batches of changed columns (<= 4096 per tick).
   Dedicated server only; singleplayer shares the same database instance. Still missing: a dedicated-server test run, per-player interest filtering, block-level sync
   (the vanilla chunk protocol carries blocks inside the bubble), and `PlanetStatePacket` use for out-of-bubble players.
+
+## 14. Rivers at coarse LOD, and why GPU-driven culling is deferred (measured)
+- Rivers thinner than a mesh cell are drawn as an area-conserving faint tint, glossy only when they cover the cell (`riverTint`); before, they became cell-sized blue
+  dots with glints at 200-2000 km. Screenshots `alt_*` of the benchmark show clean river lines from ~20 km down.
+- Phase 13 (GPU-driven culling, Hi-Z, indirect draws): the benchmark shows <= ~370 drawn patches (<= ~4000 resident), selection 0.03-0.3 ms on the CPU, frame time avg 8.7 ms
+  with p99 14 ms at 4000 km/s. CPU culling is not the limiter at this scale, so the extra complexity is not justified yet; revisit if patch counts grow ~10x (denser
+  grids, many bodies, vegetation instancing). Hole frames stay at 0.
