@@ -253,6 +253,19 @@ public final class PlanetClient {
 
     static String terrainStats() { return terrainMode + (vanilla != null ? " | " + vanilla.stats() : ""); }
 
+    /**
+     * In the bubble the real chunks end where the planet mesh continues. Vanilla's distance fog would fade them into a
+     * sky-coloured haze that the planet (shaded by its own atmosphere) does not share: that was the visible seam. The
+     * planet's atmosphere pass provides the aerial perspective for both, so vanilla fog is pushed out of the way.
+     */
+    @SubscribeEvent
+    public static void fog(net.neoforged.neoforge.client.event.ViewportEvent.RenderFog e) {
+        if (!active || !bubbleLive || suspended) return;
+        e.setNearPlaneDistance(1.0e6f);
+        e.setFarPlaneDistance(2.0e6f);
+        e.setCanceled(true);
+    }
+
     @SubscribeEvent
     public static void input(MovementInputUpdateEvent e) {
         if (!active || bubbleLive) return;                         // in the bubble the real player moves normally
