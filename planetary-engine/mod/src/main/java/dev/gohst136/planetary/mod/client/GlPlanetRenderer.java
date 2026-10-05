@@ -75,6 +75,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private final AtomicInteger workerId = new AtomicInteger();
 
     private int sharedEbo = -1;      // all patches have the same topology: one index buffer serves every VAO
+    /** 0 off, 1 LOD level colours, 2 level colours + wireframe (toggled by the K key). */
+    static volatile int debugMode;
+    private int uDebug, uLevel;
     private int program = -1;
     private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
     private long residentBytes;
@@ -214,8 +217,11 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             v3.clear();
             GlStateManager._glUniform3(uCamPos, v3.put((float) cam[0]).put((float) cam[1]).put((float) cam[2]).flip());
             GlStateManager._glUniform1(uFarLog, st.floats((float) (Math.log(PlanetClient.FAR + 1.0) / Math.log(2.0))));
+            GlStateManager._glUniform1i(uDebug, debugMode);
+            if (debugMode == 2) GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
             for (var e : toDraw.entrySet()) {
                 Gpu g = resident.get(e.getKey());
+                GlStateManager._glUniform1(uLevel, st.floats(e.getKey().level()));
                 g.lastUsedFrame = frame;
                 v3.clear();
                 v3.put((float) (g.origin[0] - cam[0])).put((float) (g.origin[1] - cam[1])).put((float) (g.origin[2] - cam[2])).flip();
@@ -228,6 +234,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                 GL11.glDrawElements(GL11.GL_TRIANGLES, g.indexCount, GL11.GL_UNSIGNED_INT, 0L);
             }
         }
+        if (debugMode == 2) GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
         drawnLastFrame = toDraw.size();
         if (planet.atmosphereHeight() > 0) drawAtmosphere(cam, view, proj, sun);        // airless bodies have none
         GlStateManager._glBindVertexArray(0);
@@ -312,6 +319,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         uSun = GlStateManager._glGetUniformLocation(program, "uSun");
         uCamPos = GlStateManager._glGetUniformLocation(program, "uCamPos");
         uOriginMod = GlStateManager._glGetUniformLocation(program, "uOriginMod");
+        uDebug = GlStateManager._glGetUniformLocation(program, "uDebug");
+        uLevel = GlStateManager._glGetUniformLocation(program, "uLevel");
     }
 
     private void drainUploads() {

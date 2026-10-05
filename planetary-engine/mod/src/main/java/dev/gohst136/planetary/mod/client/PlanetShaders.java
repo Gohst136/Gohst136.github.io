@@ -37,6 +37,8 @@ final class PlanetShaders {
             in vec3 vLocal;
             in vec4 vColor;
             uniform vec3 uSun;        // unit vector towards the sun (planet frame == world axes)
+            uniform int uDebug;       // 0 normal, 1 colour by LOD level, 2 level colours + wireframe (done on the CPU side)
+            uniform float uLevel;
             uniform vec3 uCamPos;     // camera position in planet frame (float is fine for a direction)
             out vec4 fragColor;
             void main() {
@@ -67,6 +69,11 @@ final class PlanetShaders {
                 vec3 viewDir = normalize(-vRel);
                 float glint = pow(max(dot(up, normalize(uSun + viewDir)), 0.0), 120.0) * water * step(0.0, dot(up, uSun));
                 vec3 lit = col * (0.12 + 0.88 * diff) + vec3(0.9, 0.85, 0.7) * glint * 0.7;
+                if (uDebug > 0) {                                      // LOD level as a hue ramp: coarse = red ... fine = violet
+                    float hue = clamp(uLevel / 22.0, 0.0, 1.0) * 0.8;
+                    vec3 lc = clamp(abs(mod(hue * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+                    lit = mix(lc, lit, 0.25);
+                }
                 fragColor = vec4(lit, 1.0);
             }
             """;

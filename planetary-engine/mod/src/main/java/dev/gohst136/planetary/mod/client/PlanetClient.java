@@ -40,6 +40,7 @@ public final class PlanetClient {
     private static final double NEAR = 0.1;
 
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
+    static final KeyMapping DEBUG_VIEW = new KeyMapping("key.planetary.debug", GLFW.GLFW_KEY_K, "key.categories.planetary");
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
     static PlanetDefinition PLANET = PlanetDefinition.earth(20240601L);
@@ -123,13 +124,14 @@ public final class PlanetClient {
     @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
     public static final class ModBus {
         @SubscribeEvent
-        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(BOOST); }
+        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(BOOST); e.register(DEBUG_VIEW); }
     }
 
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post e) {
         Minecraft mc = Minecraft.getInstance();
         PlanetAutoTest.tick(mc);
+        while (DEBUG_VIEW.consumeClick()) GlPlanetRenderer.debugMode = (GlPlanetRenderer.debugMode + 1) % 3;
         while (TOGGLE.consumeClick()) {
             if (mc.player == null) continue;
             setActive(!active);
@@ -597,6 +599,7 @@ public final class PlanetClient {
         lines.addAll(renderer.stats());
         if (BODIES != null) for (var in : BODIES.instances()) lines.add(in.def.id() + String.format(": %d patches, %.0f px radius", in.last == null ? 0 : in.last.patches.size(), in.angularRadiusPx));
         if (realWorld) lines.add(bubbleLive ? "REAL WORLD (normal Minecraft controls; fly above 800 m to leave)" : "sink below 300 m to land in the real world, P to leave planet mode");
+        if (GlPlanetRenderer.debugMode > 0) lines.add("DEBUG (K): LOD level colours" + (GlPlanetRenderer.debugMode == 2 ? " + wireframe" : "") + "  coarse=red .. fine=violet");
         lines.add(String.format("sim time %.1f h (x%.0f)  frame: %s", simTime / 3600.0, timeScale, inertial ? "inertial (space)" : "co-rotating with the planet"));
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }

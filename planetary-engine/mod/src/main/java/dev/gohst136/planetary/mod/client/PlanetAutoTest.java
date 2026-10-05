@@ -347,7 +347,12 @@ final class PlanetAutoTest {
         if (post > 0) {
             if (pendingName != null) return;
             postFrames++;
-            if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 2; postFrames = 0; }
+            if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 10; postFrames = 0; }
+            else if (post == 10) { GlPlanetRenderer.debugMode = 1; post = 11; postFrames = 0; }
+            else if (post == 11 && postFrames > 20) { pendingName = "debug_levels.png"; post = 12; postFrames = 0; }
+            else if (post == 12) { GlPlanetRenderer.debugMode = 2; post = 13; postFrames = 0; }
+            else if (post == 13 && postFrames > 20) { pendingName = "debug_wire.png"; post = 14; postFrames = 0; }
+            else if (post == 14) { GlPlanetRenderer.debugMode = 0; post = 2; postFrames = 0; }
             else if (post == 2) { PlanetClient.planetOff = true; Minecraft.getInstance().options.gamma().set(1.0); post = 3; postFrames = 0; }   // magenta backdrop + full brightness: if real blocks are drawn at all they must show
             else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; postFrames = 0; }
             else if (post == 4) { PlanetClient.suspended = true; post = 5; postFrames = 0; }

@@ -1,5 +1,6 @@
 {
   "key.planetary.toggle": "Toggle planet flight view",
   "key.planetary.boost": "Planet flight speed boost",
+  "key.planetary.debug": "Planet debug view (LOD colours / wireframe)",
   "key.categories.planetary": "Planetary Engine"
 }
