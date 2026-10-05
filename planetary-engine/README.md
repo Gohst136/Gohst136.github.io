@@ -135,3 +135,6 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
   frame's axes so it never jumps when the frame switches (inertial <-> planet-fixed <-> Moon-fixed). The vanilla camera is used only inside the bubble. The benchmark still scripts the vanilla camera (unchanged path).
 - **Not yet done:** 22% of land is above 1000 m (12% above 2000 m, 4% above 4000 m), where the real world's vertical map compresses heights (build limit Y 1280): the planet is
   more mountainous than Earth and the real chunks flatten its high peaks. Candidates: lower the relief and/or raise the dimension height.
+
+- **Measured after these changes** (commit 841ef95, run on a 3440x1440 window, i.e. ~3.7x the pixels of the 1280x720 baseline, so more patches and slower streaming than the older numbers): 0 hole frames in
+  transit and lap, real chunks equal the planet function (FIDELITY 100%), mesh build 3.4 ms per 32x32 patch (+~26% from the parent sampling). Compare runs only at the same resolution.
