@@ -90,6 +90,7 @@ public final class PlanetClient {
         Vec3 d = BODIES.sunDirE(simTime);
         return new float[]{(float) d.x(), (float) d.y(), (float) d.z()};
     }
+    static boolean forceDaySync;               // benchmark: exercise the sun-derived day time
     private static int dayTimeFrames;
     /**
      * Real chunks are lit by the vanilla day time: derive it from the star system's sun at the landing site (elevation and rising/setting
@@ -97,7 +98,7 @@ public final class PlanetClient {
      * The benchmark keeps its fixed noon (comparable shots).
      */
     private static void syncDayTime(Minecraft mc, boolean onMoon) {
-        if (PlanetAutoTest.enabled() || bubble == null || (++dayTimeFrames & 15) != 0) return;
+        if ((PlanetAutoTest.enabled() && !forceDaySync) || bubble == null || (++dayTimeFrames & 15) != 0) return;
         var server = mc.getSingleplayerServer();
         if (server == null) return;
         float[] sE = sunDirE();

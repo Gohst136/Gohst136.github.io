@@ -353,7 +353,11 @@ final class PlanetAutoTest {
             else if (post == 11 && postFrames > 20) { pendingName = "debug_levels.png"; post = 12; postFrames = 0; }
             else if (post == 12) { GlPlanetRenderer.debugMode = 2; post = 13; postFrames = 0; }
             else if (post == 13 && postFrames > 20) { pendingName = "debug_wire.png"; post = 14; postFrames = 0; }
-            else if (post == 14) { GlPlanetRenderer.debugMode = 0; post = 2; postFrames = 0; }
+            else if (post == 14) { GlPlanetRenderer.debugMode = 0; post = 20; postFrames = 0; }
+            else if (post == 20) { PlanetClient.forceDaySync = true; PlanetClient.simTime += 43082.0; post = 21; postFrames = 0; }     // half a spin: the landing site now faces away from the sun
+            else if (post == 21 && postFrames > 120) { pendingName = "bubble_daysync_night.png"; post = 22; postFrames = 0; }
+            else if (post == 22) { PlanetClient.simTime -= 43082.0; post = 23; postFrames = 0; }
+            else if (post == 23 && postFrames > 120) { pendingName = "bubble_daysync_day.png"; PlanetClient.forceDaySync = false; post = 2; postFrames = 0; }
             else if (post == 2) { PlanetClient.planetOff = true; Minecraft.getInstance().options.gamma().set(1.0); post = 3; postFrames = 0; }   // magenta backdrop + full brightness: if real blocks are drawn at all they must show
             else if (post == 3 && postFrames > 30) { pendingName = "bubble_planet_off.png"; post = 4; postFrames = 0; }
             else if (post == 4) { PlanetClient.suspended = true; post = 5; postFrames = 0; }
