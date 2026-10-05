@@ -63,3 +63,10 @@ Unit tests: `gradle :core:test` (coordinates, cube sphere, bounds, selector, rea
   say green; the benchmark lands in lowlands. Fix options: custom biome temperature modifier or a dimension-specific climate.
 - Bugs found by measuring (kept here as lessons): a mode flip every frame painted the planet over the real chunks (exit condition used
   height above sea level); an unfilled biome cache made worldgen 30x slower; stale save folders invalidated early runs.
+
+## 9. Collision at speed (Phase 8, first part)
+`physics/SweptCollision`: continuous collision of the free-flight camera against the planet surface. Sphere-tracing steps (bounded by
+clearance / slope bound), bisection on the crossing, coarse terrain cell size that grows with the move length, so a 1,000 km/s move
+costs a few thousand terrain samples at most. Tested: a straight move through the planet stops at the surface (bounded sample count),
+high-altitude moves are not blocked, 20 km low-altitude moves never end inside terrain (18/300 blocked by mountains).
+Not done yet: the real player's collision at speed inside the bubble (vanilla physics apply there), vehicles, entity collision.

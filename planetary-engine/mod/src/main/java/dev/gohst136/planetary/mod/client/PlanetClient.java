@@ -51,6 +51,7 @@ public final class PlanetClient {
     static final float[] SUN = {0.6f / 0.99719607f, 0.5f / 0.99719607f, 0.62f / 0.99719607f};
     static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
     static boolean suspended;                  // diagnostics: my render handler does nothing at all (pure vanilla frame)
+    static boolean collisionBlocked;           // last free-flight move was stopped by terrain
     static boolean planetOff;                  // diagnostics: skip the planet draw (real world only)
     static boolean active;
     private static net.minecraft.client.CloudStatus savedClouds = net.minecraft.client.CloudStatus.FANCY;
@@ -304,9 +305,15 @@ public final class PlanetClient {
             if (o.keyRight.isDown()) move = move.sub(lft);
             if (o.keyJump.isDown()) move = move.add(radial);
             if (o.keyShift.isDown()) move = move.sub(radial);
-            if (move.length() > 0) pos = pos.add(move.normalize().mul(speed * dt));
+            if (move.length() > 0) {
+                Vec3 target = pos.add(move.normalize().mul(speed * dt));
+                // continuous collision: the move may never pass through terrain, however fast
+                var hit = dev.gohst136.planetary.physics.SweptCollision.move(TERRAIN, PLANET.radius(), pos, target, 2.0, TERRAIN.slopeBound());
+                pos = hit.position();
+                collisionBlocked = hit.blocked();
+            }
             if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); }
-            // minimal terrain contact: never go below 2 m above the ground (swept collision comes in Phase 8)
+            // resting contact: never below 2 m above the ground at the final position (fine-detail height)
             Vec3 nd = pos.normalize();
             double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
             if (pos.length() < minR) pos = nd.mul(minR);
