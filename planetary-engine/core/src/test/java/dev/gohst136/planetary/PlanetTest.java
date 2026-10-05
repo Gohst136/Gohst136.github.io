@@ -56,10 +56,6 @@ class PlanetTest {
         PatchMesh m = new PatchMeshBuilder(planet, terrain).build(new PatchKey(2, 6, 10, 20), 16);
         int w = 17;
         assertEquals((w * w + 64) * 3, m.positions().length);
-        for (int j = 0; j <= 16; j += 2) for (int i = 0; i <= 16; i += 2) {
-            int k = (j * w + i) * 3;
-            assertEquals(m.positions()[k], m.morphPositions()[k], 0f, "even vertices do not morph");
-        }
         double maxLen = 0;
         for (int i = 0; i < m.positions().length; i += 3)
             maxLen = Math.max(maxLen, Math.sqrt(Math.pow(m.positions()[i], 2) + Math.pow(m.positions()[i + 1], 2) + Math.pow(m.positions()[i + 2], 2)));

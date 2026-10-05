@@ -29,6 +29,22 @@ public final class PatchMeshBuilder {
             int ci = (j * w + i) * 4;
             colorV[ci] = (float) smp[1]; colorV[ci + 1] = (float) smp[2]; colorV[ci + 2] = (float) smp[3]; colorV[ci + 3] = (float) smp[4];
         }
+        // Geomorph target = the PARENT's geometry and colour (not this mesh's own coarser grid): the parent's grid points are this grid's even
+        // vertices, but the parent sampled the terrain with a cell twice as large (fewer octaves, other tint / river coverage). Sampling the
+        // even vertices with the parent's cell makes a fully morphed child identical to the parent it replaces: no pop in height, shading or colour.
+        Vec3[] ppos = pos.clone();
+        float[] pcol = new float[colorV.length];
+        System.arraycopy(colorV, 0, pcol, 0, colorV.length);
+        if (k.level() > 0) {
+            final double parentCell = cell * 2.0;
+            for (int j = 0; j <= n; j += 2) for (int i = 0; i <= n; i += 2) {
+                Vec3 d = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), i / (double) n, j / (double) n);
+                terrain.sampleSurface(d, parentCell, smp);
+                ppos[j * w + i] = d.mul(planet.radius() + smp[0]);
+                int ci = (j * w + i) * 4;
+                pcol[ci] = (float) smp[1]; pcol[ci + 1] = (float) smp[2]; pcol[ci + 2] = (float) smp[3]; pcol[ci + 3] = (float) smp[4];
+            }
+        }
         Vec3 centerDir = CubeSphere.patchDirection(k.face(), k.level(), k.x(), k.y(), 0.5, 0.5);
         Vec3 o = centerDir.mul(planet.radius() + terrain.heightAt(centerDir, cell));
 
@@ -42,7 +58,20 @@ public final class PatchMeshBuilder {
         for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
             int idx = j * w + i;
             put(p, idx, pos[idx].sub(o));
-            put(m, idx, morphed(pos, w, n, i, j).sub(o));
+            put(m, idx, morphed(ppos, w, n, i, j).sub(o));
+        }
+        float[] morphCol = new float[colorV.length];
+        for (int j = 0; j <= n; j++) for (int i = 0; i <= n; i++) {
+            int c0 = (j * w + i) * 4;
+            boolean oi = (i & 1) == 1, oj = (j & 1) == 1;
+            for (int c = 0; c < 4; c++) {
+                float v;
+                if (!oi && !oj) v = pcol[c0 + c];
+                else if (oi && !oj) v = 0.5f * (pcol[c0 - 4 + c] + pcol[c0 + 4 + c]);
+                else if (!oi) v = 0.5f * (pcol[c0 - w * 4 + c] + pcol[c0 + w * 4 + c]);
+                else v = 0.5f * (pcol[c0 - w * 4 - 4 + c] + pcol[c0 + w * 4 + 4 + c]);
+                morphCol[c0 + c] = v;
+            }
         }
         int[] ring = new int[skirtCount];
         int r = 0;
@@ -54,8 +83,9 @@ public final class PatchMeshBuilder {
             int src = ring[s], dst = w * w + s;
             Vec3 down = pos[src].normalize().mul(-skirt);
             put(p, dst, pos[src].add(down).sub(o));
-            put(m, dst, morphed(pos, w, n, src % w, src / w).add(down).sub(o));
+            put(m, dst, morphed(ppos, w, n, src % w, src / w).add(down).sub(o));
             System.arraycopy(colorV, src * 4, colorV, dst * 4, 4);
+            System.arraycopy(morphCol, src * 4, morphCol, dst * 4, 4);
         }
         int[] idx = new int[(n * n * 6) + skirtCount * 6];
         int t = 0;
@@ -68,7 +98,7 @@ public final class PatchMeshBuilder {
             int sa = w * w + s, sb = w * w + (s + 1) % skirtCount;
             idx[t++] = a; idx[t++] = sa; idx[t++] = b; idx[t++] = b; idx[t++] = sa; idx[t++] = sb;
         }
-        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, colorV, idx, n);
+        return new PatchMesh(new double[]{o.x(), o.y(), o.z()}, p, m, colorV, morphCol, idx, n);
     }
 
     /** Position this vertex takes in the 2x coarser grid (odd indices collapse onto neighbours). */

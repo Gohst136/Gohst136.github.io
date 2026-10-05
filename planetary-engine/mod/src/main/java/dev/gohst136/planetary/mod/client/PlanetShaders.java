@@ -11,6 +11,7 @@ final class PlanetShaders {
             in vec3 aPos;
             in vec3 aMorph;
             in vec4 aColor;
+            in vec4 aColor2;          // parent's colour at the same place
             uniform mat4 uProj;
             uniform mat4 uView;       // rotation only (camera sits at the origin)
             uniform vec3 uOffset;     // patch origin - camera, computed in double on the CPU
@@ -24,7 +25,7 @@ final class PlanetShaders {
                 vec3 rel = uOffset + mix(aPos, aMorph, uMorph);
                 vRel = rel;
                 vLocal = mix(aPos, aMorph, uMorph) + uOriginMod;
-                vColor = aColor;
+                vColor = mix(aColor, aColor2, uMorph);
                 vec4 c = uProj * uView * vec4(rel, 1.0);
                 c.z = (2.0 * log2(max(1e-6, 1.0 + c.w)) / uFarLog - 1.0) * c.w;
                 gl_Position = c;
@@ -287,6 +288,7 @@ final class PlanetShaders {
         GL20.glBindAttribLocation(prog, 0, "aPos");
         GL20.glBindAttribLocation(prog, 1, "aMorph");
         GL20.glBindAttribLocation(prog, 2, "aColor");
+        GL20.glBindAttribLocation(prog, 3, "aColor2");
         GL20.glLinkProgram(prog);
         if (GL20.glGetProgrami(prog, GL20.GL_LINK_STATUS) == 0)
             throw new IllegalStateException("planet shader link failed: " + GL20.glGetProgramInfoLog(prog));
