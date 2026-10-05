@@ -90,6 +90,28 @@ public final class PlanetClient {
         Vec3 d = BODIES.sunDirE(simTime);
         return new float[]{(float) d.x(), (float) d.y(), (float) d.z()};
     }
+    private static int dayTimeFrames;
+    /**
+     * Real chunks are lit by the vanilla day time: derive it from the star system's sun at the landing site (elevation and rising/setting
+     * side), so light, sky brightness and the planet pass agree. Vanilla: tick 0 = sunrise in +X (east), 6000 noon, 12000 sunset.
+     * The benchmark keeps its fixed noon (comparable shots).
+     */
+    private static void syncDayTime(Minecraft mc, boolean onMoon) {
+        if (PlanetAutoTest.enabled() || bubble == null || (++dayTimeFrames & 15) != 0) return;
+        var server = mc.getSingleplayerServer();
+        if (server == null) return;
+        float[] sE = sunDirE();
+        Vec3 sunB = onMoon ? BODIES.dirFromE("moon", simTime, new Vec3(sE[0], sE[1], sE[2])) : new Vec3(sE[0], sE[1], sE[2]);
+        double elev = sunB.dot(bubble.ey), east = sunB.dot(bubble.ex);
+        double phi = Math.atan2(elev, east);                               // 0 = rising in the east, pi/2 = noon
+        long t = Math.floorMod(Math.round(phi / (2.0 * Math.PI) * 24000.0), 24000L);
+        server.execute(() -> {
+            var level = server.overworld();
+            level.getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_DAYLIGHT).set(false, server);
+            level.setDayTime(t);
+        });
+    }
+
     static boolean realWorld;                  // the integrated server runs the planet generator: real chunks match the planet
     static boolean suspended;                  // diagnostics: my render handler does nothing at all (pure vanilla frame)
     static boolean collisionBlocked;           // last free-flight move was stopped by terrain
@@ -488,6 +510,7 @@ public final class PlanetClient {
             Vec3 fwdB = bubble.direction(look.x(), look.y(), look.z());
             Vec3 radialB = posB.normalize();
             boolean onMoon = bubble.body.equals("moon");
+            syncDayTime(mc, onMoon);
             pos = onMoon ? BODIES.toE("moon", simTime, posB) : posB;
             fwd = onMoon ? BODIES.dirToE("moon", simTime, fwdB) : fwdB;
             radial = onMoon ? BODIES.dirToE("moon", simTime, radialB) : radialB;
