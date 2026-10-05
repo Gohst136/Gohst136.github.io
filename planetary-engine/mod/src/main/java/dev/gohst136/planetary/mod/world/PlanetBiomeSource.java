@@ -39,7 +39,7 @@ public final class PlanetBiomeSource extends BiomeSource {
         for (ResourceKey<Biome> k : java.util.List.of(
                 Biomes.PLAINS, Biomes.SNOWY_PLAINS, Biomes.DESERT, Biomes.FOREST, Biomes.DARK_FOREST, Biomes.BIRCH_FOREST,
                 Biomes.TAIGA, Biomes.SNOWY_TAIGA, Biomes.SAVANNA, Biomes.JUNGLE, Biomes.SPARSE_JUNGLE, Biomes.WINDSWEPT_HILLS,
-                Biomes.WINDSWEPT_FOREST, Biomes.SNOWY_SLOPES, Biomes.FROZEN_PEAKS, Biomes.STONY_PEAKS, Biomes.RIVER,
+                Biomes.WINDSWEPT_FOREST, Biomes.SAVANNA_PLATEAU, Biomes.SNOWY_SLOPES, Biomes.FROZEN_PEAKS, Biomes.STONY_PEAKS, Biomes.RIVER,
                 Biomes.FROZEN_RIVER, Biomes.BEACH, Biomes.SNOWY_BEACH, Biomes.OCEAN, Biomes.DEEP_OCEAN, Biomes.COLD_OCEAN,
                 Biomes.DEEP_COLD_OCEAN, Biomes.LUKEWARM_OCEAN, Biomes.DEEP_LUKEWARM_OCEAN, Biomes.WARM_OCEAN,
                 Biomes.FROZEN_OCEAN, Biomes.DEEP_FROZEN_OCEAN, Biomes.MEADOW))
@@ -72,8 +72,14 @@ public final class PlanetBiomeSource extends BiomeSource {
             c.put(key, k);
             COLUMN_EVALS.incrementAndGet();
         }
-        return biomes.get(k);
+        Holder<Biome> h = biomes.get(k);
+        if (h == null) {                                                    // a pick() result that is not registered must never reach the structure code as null
+            if (WARNED.add(k)) System.out.println("[planetary] biome " + k.location() + " missing from the biome source list, using plains");
+            h = biomes.get(Biomes.PLAINS);
+        }
+        return h;
     }
+    private static final java.util.Set<ResourceKey<Biome>> WARNED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * Vanilla lowers a biome's temperature with ABSOLUTE height (above Y 80) and snows where it falls below 0.15, so a warm
