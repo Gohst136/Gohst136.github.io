@@ -79,6 +79,70 @@ final class PlanetShaders {
             }
             """;
 
+    /** Block skin: quads with atlas sprites tiled per block, lit by the game's own lightmap, positioned like the smooth patches (camera-relative, log depth). */
+    static final String SKIN_VERTEX = """
+            #version 150
+            in vec3 aPos;
+            in vec2 aUv;
+            in vec4 aColor;
+            in vec4 aInfo;            // x = sprite slot, y = sky light 0..15
+            uniform mat4 uProj;
+            uniform mat4 uView;
+            uniform vec3 uOffset;
+            uniform float uFarLog;
+            out vec2 vUv;
+            out vec4 vColor;
+            flat out vec2 vInfo;
+            void main() {
+                vec3 rel = uOffset + aPos;
+                vUv = aUv;
+                vColor = aColor;
+                vInfo = aInfo.xy;
+                vec4 c = uProj * uView * vec4(rel, 1.0);
+                c.z = (2.0 * log2(max(1e-6, 1.0 + c.w)) / uFarLog - 1.0) * c.w;
+                gl_Position = c;
+            }
+            """;
+
+    static final String SKIN_FRAGMENT = """
+            #version 150
+            in vec2 vUv;
+            in vec4 vColor;
+            flat in vec2 vInfo;
+            uniform sampler2D uAtlas;
+            uniform sampler2D uLight;
+            uniform vec4 uRects[64];
+            out vec4 fragColor;
+            void main() {
+                vec4 r = uRects[int(vInfo.x + 0.5)];
+                vec2 size = r.zw - r.xy;
+                vec2 st = r.xy + fract(vUv) * size;                         // the sprite repeats once per block
+                vec4 tex = textureGrad(uAtlas, st, dFdx(vUv) * size, dFdy(vUv) * size);   // mip level from the continuous coordinate
+                // the game's lightmap exactly as its chunk shader samples it: (block light, sky light) * 16 / 256, clamped to the texel centres
+                vec2 luv = clamp(vec2(0.0, vInfo.y * 16.0) / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0));
+                vec3 light = texture(uLight, luv).rgb;
+                fragColor = vec4(tex.rgb * vColor.rgb * light, tex.a * vColor.a);
+            }
+            """;
+
+    static int compileSkin() {
+        int vs = compile(GL20.GL_VERTEX_SHADER, SKIN_VERTEX);
+        int fs = compile(GL20.GL_FRAGMENT_SHADER, SKIN_FRAGMENT);
+        int prog = GL20.glCreateProgram();
+        GL20.glAttachShader(prog, vs);
+        GL20.glAttachShader(prog, fs);
+        GL20.glBindAttribLocation(prog, 0, "aPos");
+        GL20.glBindAttribLocation(prog, 1, "aUv");
+        GL20.glBindAttribLocation(prog, 2, "aColor");
+        GL20.glBindAttribLocation(prog, 3, "aInfo");
+        GL20.glLinkProgram(prog);
+        if (GL20.glGetProgrami(prog, GL20.GL_LINK_STATUS) == 0)
+            throw new IllegalStateException("skin shader link failed: " + GL20.glGetProgramInfoLog(prog));
+        GL20.glDeleteShader(vs);
+        GL20.glDeleteShader(fs);
+        return prog;
+    }
+
     static final String ATMO_VERTEX = """
             #version 150
             out vec2 vNdc;

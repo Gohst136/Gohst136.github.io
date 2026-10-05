@@ -218,10 +218,13 @@ public final class PlanetClient {
                 if (selector == null) {
                     chooseTerrain(mc);
                     initSystem();
-                    selector = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
-                    predictNear = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
-                    predictFar = new QuadtreeSelector(PLANET, TERRAIN, QuadtreeSelector.Params.defaults());
+                    boolean skin = GlPlanetRenderer.SKIN_ALLOWED && realWorld && vanilla == null;       // block skin: only where real chunks match the planet function
+                    var params = skin ? QuadtreeSelector.Params.skin() : QuadtreeSelector.Params.defaults();
+                    selector = new QuadtreeSelector(PLANET, TERRAIN, params);
+                    predictNear = new QuadtreeSelector(PLANET, TERRAIN, params);
+                    predictFar = new QuadtreeSelector(PLANET, TERRAIN, params);
                     renderer = new GlPlanetRenderer(new PatchMeshBuilder(PLANET, TERRAIN), PLANET);
+                    if (skin) renderer.enableSkin(dev.gohst136.planetary.mod.world.PlanetWorld.terrain(PLANET.seed()));
                     renderer.pinCoarse();
                 }
             }

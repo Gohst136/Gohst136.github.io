@@ -80,7 +80,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
     }
 
     /** The one place where planet block kinds become vanilla blocks. */
-    static BlockState state(PlanetColumns.Kind k) {
+    public static BlockState state(PlanetColumns.Kind k) {
         switch (k) {
             case GRASS_BLOCK: return Blocks.GRASS_BLOCK.defaultBlockState();
             case DIRT: return Blocks.DIRT.defaultBlockState();

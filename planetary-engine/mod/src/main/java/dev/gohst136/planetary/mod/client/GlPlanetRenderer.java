@@ -9,6 +9,12 @@ import dev.gohst136.planetary.mesh.PatchMesh;
 import dev.gohst136.planetary.mesh.PatchMeshBuilder;
 import dev.gohst136.planetary.planet.PlanetDefinition;
 import dev.gohst136.planetary.render.RenderBackend;
+import dev.gohst136.planetary.skin.BlockSkinBuilder;
+import dev.gohst136.planetary.skin.SkinMesh;
+import dev.gohst136.planetary.terrain.RealisticTerrain;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import org.lwjgl.opengl.GL13;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
@@ -33,7 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private static final int GRID = 32;
     private static final int WORKERS = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors() - 4));   // leave cores for the render thread, the server and the OS
-    private static final long VRAM_BUDGET_BYTES = Long.getLong("planetary.vramMB", 320L) << 20;
+    private static final long VRAM_BUDGET_BYTES = Long.getLong("planetary.vramMB", 900L) << 20;
     private static final int MAX_UPLOADS_PER_FRAME = 6;
     private static final int MAX_REQUESTS_PER_FRAME = 64;
     private static final int PIN_LEVEL = 2;                       // levels <= 2 stay resident (126 meshes, ~8 MB)
@@ -53,13 +59,30 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     }
 
     private static final class Gpu {
+        boolean skin;
+        int opaqueIndexCount, waterIndexCount;
         int vao, vbo, ebo, indexCount;
         double[] origin;
         long bytes;
         long lastUsedFrame;
     }
 
-    private record Built(PatchKey key, PatchMesh mesh) {}
+    private record Built(PatchKey key, PatchMesh mesh, SkinMesh skin) {}
+
+    // ---- block skin (far terrain as blocks, see BlockSkinBuilder) -------------------------------------------------------------------
+    /** Quadtree levels from this one on are meshed as blocks (cell 2^(18-level) blocks). */
+    static final int SKIN_FROM_LEVEL = Integer.getInteger("planetary.skinFrom", 15);
+    static final boolean SKIN_ALLOWED = !"false".equals(System.getProperty("planetary.skin"));
+    private static final int SKIN_MAX_QUADS = 16384;
+    private RealisticTerrain skinTerrain;
+    private volatile BlockSkinBuilder skinBuilder;
+    private SkinStyleImpl skinStyle;
+    private int skinProgram = -1, skinEbo = -1, kProj, kView, kOffset, kFarLog, kRects, kAtlas, kLight;
+    private int skinDrawnLastFrame;
+
+    /** Turns the block skin on for this renderer (home planet only); the builder itself is created on the first frame, when the game's models exist. */
+    void enableSkin(RealisticTerrain terrain) { if (SKIN_ALLOWED) this.skinTerrain = terrain; }
+    boolean skinActive() { return skinBuilder != null; }
 
     private final PatchMeshBuilder builder;
     private final PlanetDefinition planet;
@@ -191,6 +214,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         frame++;
         prefetchLastFrame = 0;
         if (program < 0) initProgram();
+        if (skinTerrain != null && skinBuilder == null) initSkin();
         drainUploads();
         requestMissing(selected);
 
@@ -232,6 +256,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             if (debugMode == 2) GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
             for (var e : toDraw.entrySet()) {
                 Gpu g = resident.get(e.getKey());
+                if (g.skin) continue;                                   // block patches are drawn by drawSkin
                 GlStateManager._glUniform1(uLevel, st.floats(e.getKey().level()));
                 g.lastUsedFrame = frame;
                 v3.clear();
@@ -246,6 +271,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             }
         }
         if (debugMode == 2) GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
+        drawSkin(toDraw.keySet(), cam, terrainView, proj);
         drawnLastFrame = toDraw.size();
         if (planet.atmosphereHeight() > 0) drawAtmosphere(cam, view, proj, sun);        // airless bodies have none
         GlStateManager._glBindVertexArray(0);
@@ -324,6 +350,129 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         return false;
     }
 
+    private void initSkin() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) return;
+            skinStyle = new SkinStyleImpl(mc);
+            skinProgram = PlanetShaders.compileSkin();
+            kProj = GlStateManager._glGetUniformLocation(skinProgram, "uProj");
+            kView = GlStateManager._glGetUniformLocation(skinProgram, "uView");
+            kOffset = GlStateManager._glGetUniformLocation(skinProgram, "uOffset");
+            kFarLog = GlStateManager._glGetUniformLocation(skinProgram, "uFarLog");
+            kRects = GlStateManager._glGetUniformLocation(skinProgram, "uRects");
+            kAtlas = GlStateManager._glGetUniformLocation(skinProgram, "uAtlas");
+            kLight = GlStateManager._glGetUniformLocation(skinProgram, "uLight");
+            skinBuilder = new BlockSkinBuilder(planet, skinTerrain, skinStyle);
+            System.out.println("[planetary] block skin enabled from level " + SKIN_FROM_LEVEL);
+        } catch (Throwable t) {
+            System.out.println("[planetary] block skin disabled: " + t);
+            skinTerrain = null;
+        }
+    }
+
+    /** Uploads a block-skin mesh: vertex = position (3 float), uv (2 float), colour (4 byte, normalised), info (slot, sky; 4 byte). */
+    private void uploadSkin(PatchKey key, SkinMesh m) {
+        int quads = Math.min(m.quadCount(), SKIN_MAX_QUADS);
+        int waterStart = Math.min(m.waterStart(), quads);
+        ByteBuffer vb = MemoryUtil.memAlloc(quads * 4 * 28);
+        for (int q = 0; q < quads; q++) for (int v = 0; v < 4; v++) {
+            int i = q * 4 + v;
+            vb.putFloat(m.pos()[i * 3]).putFloat(m.pos()[i * 3 + 1]).putFloat(m.pos()[i * 3 + 2]);
+            vb.putFloat(m.uv()[i * 2]).putFloat(m.uv()[i * 2 + 1]);
+            int c = m.rgba()[i];
+            vb.put((byte) (c >> 16)).put((byte) (c >> 8)).put((byte) c).put((byte) (c >> 24));
+            vb.put((byte) m.slot()[q]).put(m.sky()[q]).put((byte) 0).put((byte) 0);
+        }
+        vb.flip();
+        if (skinEbo < 0) {
+            ByteBuffer ib = MemoryUtil.memAlloc(SKIN_MAX_QUADS * 6 * 4);
+            for (int q = 0; q < SKIN_MAX_QUADS; q++) { int b = q * 4; ib.putInt(b).putInt(b + 1).putInt(b + 2).putInt(b).putInt(b + 2).putInt(b + 3); }
+            ib.flip();
+            skinEbo = GlStateManager._glGenBuffers();
+            GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, skinEbo);
+            GlStateManager._glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, ib, GL15.GL_STATIC_DRAW);
+            MemoryUtil.memFree(ib);
+        }
+        Gpu g = new Gpu();
+        g.skin = true;
+        g.vao = GlStateManager._glGenVertexArrays();
+        g.vbo = GlStateManager._glGenBuffers();
+        GlStateManager._glBindVertexArray(g.vao);
+        GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, g.vbo);
+        GlStateManager._glBufferData(GL15.GL_ARRAY_BUFFER, vb, GL15.GL_STATIC_DRAW);
+        GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, skinEbo);
+        GlStateManager._enableVertexAttribArray(0);
+        GlStateManager._vertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 28, 0);
+        GlStateManager._enableVertexAttribArray(1);
+        GlStateManager._vertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 28, 12);
+        GlStateManager._enableVertexAttribArray(2);
+        GlStateManager._vertexAttribPointer(2, 4, GL11.GL_UNSIGNED_BYTE, true, 28, 20);
+        GlStateManager._enableVertexAttribArray(3);
+        GlStateManager._vertexAttribPointer(3, 4, GL11.GL_UNSIGNED_BYTE, false, 28, 24);
+        GlStateManager._glBindVertexArray(0);
+        MemoryUtil.memFree(vb);
+        g.opaqueIndexCount = waterStart * 6;
+        g.waterIndexCount = (quads - waterStart) * 6;
+        g.indexCount = quads * 6;
+        g.origin = m.origin();
+        g.bytes = (long) quads * 4 * 28;
+        g.lastUsedFrame = frame;
+        residentBytes += g.bytes;
+        uploadsTotal++;
+        Gpu old = resident.put(key, g);
+        if (old != null) free(old);
+    }
+
+    /** Draws the block patches of this frame: opaque first, then the water surfaces blended. Uses the game's block atlas and lightmap. */
+    private void drawSkin(Collection<PatchKey> keys, double[] cam, Matrix4f terrainView, Matrix4f proj) {
+        skinDrawnLastFrame = 0;
+        if (skinProgram < 0) return;
+        List<Gpu> list = new ArrayList<>();
+        for (PatchKey k : keys) { Gpu g = resident.get(k); if (g != null && g.skin) list.add(g); }
+        if (list.isEmpty()) return;
+        Minecraft mc = Minecraft.getInstance();
+        int atlasId = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getId();
+        GlStateManager._activeTexture(GL13.GL_TEXTURE2);
+        mc.gameRenderer.lightTexture().turnOnLightLayer();                 // binds the game's lightmap (sky/block light colours of this very frame) to unit 2
+        int lightId = RenderSystem.getShaderTexture(2);
+        GlStateManager._bindTexture(lightId);
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(atlasId);
+        GlStateManager._glUseProgram(skinProgram);
+        try (MemoryStack st = MemoryStack.stackPush()) {
+            FloatBuffer fb = st.mallocFloat(16);
+            GlStateManager._glUniformMatrix4(kProj, false, proj.get(fb));
+            GlStateManager._glUniformMatrix4(kView, false, terrainView.get(fb));
+            GlStateManager._glUniform1(kFarLog, st.floats((float) (Math.log(PlanetClient.FAR + 1.0) / Math.log(2.0))));
+            GlStateManager._glUniform1i(kAtlas, 0);
+            GlStateManager._glUniform1i(kLight, 2);
+            FloatBuffer rects = st.mallocFloat(SkinStyleImpl.SLOTS * 4);
+            rects.put(skinStyle.rects).flip();
+            GlStateManager._glUniform4(kRects, rects);
+            FloatBuffer v3 = st.mallocFloat(3);
+            for (int pass = 0; pass < 2; pass++) {
+                if (pass == 1) {                                             // water: one translucent layer over the (opaque) sea floor
+                    RenderSystem.enableBlend();
+                    RenderSystem.blendFunc(770, 771);
+                    RenderSystem.depthMask(false);
+                }
+                for (Gpu g : list) {
+                    int count = pass == 0 ? g.opaqueIndexCount : g.waterIndexCount;
+                    if (count == 0) continue;
+                    v3.clear();
+                    v3.put((float) (g.origin[0] - cam[0])).put((float) (g.origin[1] - cam[1])).put((float) (g.origin[2] - cam[2])).flip();
+                    GlStateManager._glUniform3(kOffset, v3);
+                    GlStateManager._glBindVertexArray(g.vao);
+                    GL11.glDrawElements(GL11.GL_TRIANGLES, count, GL11.GL_UNSIGNED_INT, pass == 0 ? 0L : (long) g.opaqueIndexCount * 4L);
+                }
+            }
+        }
+        RenderSystem.disableBlend();
+        RenderSystem.depthMask(true);
+        skinDrawnLastFrame = list.size();
+    }
+
     private void initProgram() {
         program = PlanetShaders.compileProgram();
         uProj = GlStateManager._glGetUniformLocation(program, "uProj");
@@ -349,7 +498,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             inFlight.remove(b.key());
             Long t0 = requestedAt.remove(b.key());
             if (t0 != null) latencyMs.record((System.nanoTime() - t0) / 1e6);
-            upload(b.key(), b.mesh());
+            if (b.skin() != null) uploadSkin(b.key(), b.skin()); else upload(b.key(), b.mesh());
         }
     }
 
@@ -399,7 +548,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                 try {
                     if (frame - wanted.getOrDefault(k, 0L) > STALE_FRAMES) { inFlight.remove(k); requestedAt.remove(k); return; }
                     if (finished.size() > 600) { inFlight.remove(k); requestedAt.remove(k); return; }          // uploads are behind: do not build what cannot be uploaded; it is re-requested if still needed
-                    finished.add(new Built(k, builder.build(k, GRID)));
+                    BlockSkinBuilder sb = skinBuilder;
+                    if (sb != null && k.level() >= SKIN_FROM_LEVEL && k.level() <= BlockSkinBuilder.FINEST_LEVEL) finished.add(new Built(k, null, sb.build(k)));
+                    else finished.add(new Built(k, builder.build(k, GRID), null));
                     meshesBuilt.incrementAndGet();
                 } catch (Throwable t) { inFlight.remove(k); requestedAt.remove(k); }
             }));
@@ -441,7 +592,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
 
     List<String> stats() {
         return List.of("resident=" + resident.size() + " vram=" + (residentBytes >> 20) + "MB/" + (VRAM_BUDGET_BYTES >> 20) + "MB",
-                "drawn=" + drawnLastFrame + " fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
+                "drawn=" + drawnLastFrame + " (block skin " + skinDrawnLastFrame + ") fallback=" + fallbackLastFrame + " holes=" + holesLastFrame + " inFlight=" + inFlight.size() + " req/frame=" + requestedLastFrame,
                 "prefetch/frame=" + prefetchLastFrame + " queued=" + workers.getQueue().size() + " latency p50/p95/p99 ms=" + String.format("%.0f/%.0f/%.0f", latencyMs.median(), latencyMs.p95(), latencyMs.p99()),
                 "built=" + meshesBuilt + " uploaded=" + uploadsTotal);
     }
@@ -452,6 +603,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         for (Gpu g : resident.values()) free(g);
         resident.clear();
         if (program >= 0) { GlStateManager.glDeleteProgram(program); program = -1; }
+        if (skinProgram >= 0) { GlStateManager.glDeleteProgram(skinProgram); skinProgram = -1; }
         if (atmoProgram >= 0) { GlStateManager.glDeleteProgram(atmoProgram); atmoProgram = -1; }
     }
 }

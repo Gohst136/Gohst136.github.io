@@ -206,7 +206,7 @@ public final class BlockSkinBuilder {
             if (yHi <= yLo + 1e-9) continue;
             Kind kind = s == 0 ? c.top() : (s == 1 ? c.filler() : Kind.STONE);
             corner(p, 0, ax, az, yHi, R, origin); corner(p, 1, ax, az, yLo, R, origin); corner(p, 2, bx, bz, yLo, R, origin); corner(p, 3, bx, bz, yHi, R, origin);
-            uv[0] = 0; uv[1] = yHi; uv[2] = 0; uv[3] = yLo; uv[4] = len; uv[5] = yLo; uv[6] = len; uv[7] = yHi;
+            uv[0] = 0; uv[1] = -yHi; uv[2] = 0; uv[3] = -yLo; uv[4] = len; uv[5] = -yLo; uv[6] = len; uv[7] = -yHi;      // texture v grows downward
             int sc = color(shade, 0xFFFFFF);
             out.add(p, uv, sc, sc, sc, sc, style.slotSide(kind), 15);
             if (s == 0 && style.slotSideOverlay(kind) >= 0) {
