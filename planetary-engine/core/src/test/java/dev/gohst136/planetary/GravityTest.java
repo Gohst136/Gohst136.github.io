@@ -11,7 +11,7 @@ class GravityTest {
     @Test
     void circularOrbitKeepsRadiusAndPeriod() {
         StarSystem sys = StarSystem.example(1);
-        double gm = sys.body("earth").gm(), r = 6.371e6 + 400e3, v = Math.sqrt(gm / r), period = 2 * Math.PI * Math.sqrt(r * r * r / gm);
+        double gm = sys.body("earth").gm(), r = dev.gohst136.planetary.planet.PlanetDefinition.EARTH_RADIUS + 400e3, v = Math.sqrt(gm / r), period = 2 * Math.PI * Math.sqrt(r * r * r / gm);
         Vec3 p = new Vec3(r, 0, 0), vel = new Vec3(0, v, 0);
         double dt = 1.0, minR = r, maxR = r;
         int steps = (int) Math.round(10 * period / dt);

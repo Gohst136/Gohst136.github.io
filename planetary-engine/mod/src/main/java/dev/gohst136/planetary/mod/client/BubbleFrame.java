@@ -45,7 +45,7 @@ final class BubbleFrame {
         this.metersToY = metersToY != null ? metersToY : (m -> m + y0);
         this.d0 = anchorDir.normalize();
         int face = CubeSphere.faceOf(d0);
-        var m = PlaneUnwrap.map(d0, planetRadius * Math.PI / 4.0, 0.0);
+        var m = PlaneUnwrap.map(d0, PlaneUnwrap.halfSpan(planetRadius), 0.0);
         this.x0 = m.x1() + xOffset; this.z0 = m.z1();
         Vec3 u = CubeSphere.uAxis(face);
         this.ey = d0;
@@ -54,7 +54,7 @@ final class BubbleFrame {
         this.groundRadius = groundRadius;
         this.y0 = y0;
         {   // exact first-order chart: finite differences of the generator's own plane -> direction function
-            double hs = planetRadius * Math.PI / 4.0, hh = 40.0, px = x0 - xOffset;
+            double hs = PlaneUnwrap.halfSpan(planetRadius), hh = 40.0, px = x0 - xOffset;
             Vec3 jxr = PlaneUnwrap.inverse(px + hh, z0, hs).sub(PlaneUnwrap.inverse(px - hh, z0, hs)).mul(planetRadius / (2 * hh));
             Vec3 jzr = PlaneUnwrap.inverse(px, z0 + hh, hs).sub(PlaneUnwrap.inverse(px, z0 - hh, hs)).mul(planetRadius / (2 * hh));
             this.jx = jxr.sub(d0.mul(jxr.dot(d0)));

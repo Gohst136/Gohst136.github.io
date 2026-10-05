@@ -18,7 +18,7 @@ class BubbleMismatchTest {
     void driftBetweenRealChunksAndBackdrop() {
         PlanetDefinition p = PlanetDefinition.earth(8);
         RealisticTerrain t = new RealisticTerrain(p);
-        double halfSpan = p.radius() * Math.PI / 4.0, R = p.radius();
+        double halfSpan = PlaneUnwrap.halfSpan(p.radius()), R = p.radius();
         Random r = new Random(6);
         for (double dist : new double[]{200, 1000, 3000}) {
             double[] horiz = new double[600], dh = new double[600], horizJ = new double[600], dhJ = new double[600];

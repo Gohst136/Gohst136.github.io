@@ -488,7 +488,7 @@ final class PlanetAutoTest {
     private static String fidelityStats() {
         if (PlanetClient.vanilla == null) return realWorldFidelity();
         var d = targetDir();
-        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, PlanetClient.PLANET.radius() * Math.PI / 4.0, 0.0);
+        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(d, dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(PlanetClient.PLANET.radius()), 0.0);
         double bx = m.x1(), bz = m.z1();
         double err = 0, signed = 0, worst = 0; int n = 0;
         for (int i = -4; i < 4; i++) for (int j = -4; j < 4; j++) {

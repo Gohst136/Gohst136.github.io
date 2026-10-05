@@ -18,13 +18,22 @@ import dev.gohst136.planetary.math.Vec3;
 public final class PlaneUnwrap {
     private PlaneUnwrap() {}
 
+    /** Distance between neighbouring face squares in units of the half span; 2.25 * 2^k is an integer, so every square (and every cell of it) stays on the block grid. */
+    public static final double PITCH = 2.25;
+
+    /**
+     * Half the side of a cube-face square in the vanilla plane (= blocks) for a body of this radius: pi*R/4 rounded to a whole number. For the
+     * planet radii the project uses (2^24/pi, 2^22/pi) it is exactly 2^22 / 2^20, so quadtree cells are exact powers of two blocks and aligned to blocks.
+     */
+    public static double halfSpan(double radius) { return Math.rint(radius * Math.PI / 4.0); }
+
     public record Mapped(double x1, double z1, double x2, double z2, double w2) {}
 
     public static Mapped map(Vec3 d, double halfSpan, double band) {
         int f = CubeSphere.faceOf(d);
         double[] uv = CubeSphere.faceUV(f, d);
         double m = 1.0 - Math.max(Math.abs(uv[0]), Math.abs(uv[1]));     // distance to the nearest edge in uv units
-        double pitch = 2.2 * halfSpan;
+        double pitch = PITCH * halfSpan;
         double x1 = ((f % 3) - 1) * pitch + uv[0] * halfSpan, z1 = ((f / 3) - 0.5) * pitch - uv[1] * halfSpan;
         if (m >= band) return new Mapped(x1, z1, 0, 0, 0);
         int g = CubeSphere.secondFaceOf(d);
@@ -43,7 +52,7 @@ public final class PlaneUnwrap {
      * well before that, i.e. while max(|u|,|v|) < 1.0.
      */
     public static Vec3 inverse(double x, double z, double halfSpan) {
-        double pitch = 2.2 * halfSpan;
+        double pitch = PITCH * halfSpan;
         int best = 0; double bestM = Double.MAX_VALUE;
         for (int f = 0; f < 6; f++) {
             double u = (x - ((f % 3) - 1) * pitch) / halfSpan, v = -(z - ((f / 3) - 0.5) * pitch) / halfSpan;

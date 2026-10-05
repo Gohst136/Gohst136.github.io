@@ -21,7 +21,7 @@ public final class HybridTerrain implements TerrainSampler {
     public HybridTerrain(PlanetDefinition planet, TerrainSampler macro, DoubleBinaryOperator detail,
                          double fadeStart, double fadeEnd, double detailAmplitude, double detailSlope) {
         this.planet = planet; this.macro = macro; this.detail = detail;
-        this.halfSpan = planet.radius() * Math.PI / 4.0;
+        this.halfSpan = dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(planet.radius());
         this.fadeStart = fadeStart; this.fadeEnd = fadeEnd;
         this.detailAmplitude = detailAmplitude; this.detailSlope = detailSlope;
     }

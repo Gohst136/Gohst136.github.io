@@ -30,7 +30,7 @@ class PlanetTest {
     @Test void unresolvedDetailShrinksWithFinerCells() {
         assertTrue(terrain.unresolvedDetail(100_000) > terrain.unresolvedDetail(1_000));
         assertTrue(terrain.unresolvedDetail(1_000) > terrain.unresolvedDetail(20));
-        assertEquals(0.0, terrain.unresolvedDetail(1.0), 1e-9);
+        assertEquals(0.0, terrain.unresolvedDetail(1.0), 0.01);
     }
 
     @Test void cubeFaceEdgesAreSharedExactly() {

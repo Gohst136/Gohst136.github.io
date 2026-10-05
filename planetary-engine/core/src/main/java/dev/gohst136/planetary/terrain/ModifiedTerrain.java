@@ -17,7 +17,7 @@ public final class ModifiedTerrain implements TerrainSampler {
     private final double halfSpan, editCell;
 
     public ModifiedTerrain(TerrainSampler base, ModificationDatabase db, double planetRadius, double editCell) {
-        this.base = base; this.db = db; this.halfSpan = planetRadius * Math.PI / 4.0; this.editCell = editCell;
+        this.base = base; this.db = db; this.halfSpan = dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(planetRadius); this.editCell = editCell;
     }
 
     @Override public double heightAt(Vec3 d) { return heightAt(d, 0.0); }

@@ -7,7 +7,7 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PlaneInverseTest {
-    final double half = 6_371_000.0 * Math.PI / 4.0;
+    final double half = PlaneUnwrap.halfSpan(PlanetDefinition.EARTH_RADIUS);
 
     @Test void inverseUndoesMapInsideEveryFace() {
         Random r = new Random(1);
@@ -21,12 +21,12 @@ class PlaneInverseTest {
 
     @Test void extendedPlaneContinuesAcrossACubeEdge() {
         // walk 3 km in plane +x from just inside a face edge: the direction must move smoothly (no jump) across the edge
-        double x0 = half - 1500, z0 = -(2.2 * half) / 2 + 0;               // face 1 (cx = 0, cz = -pitch/2), v = 0 line
+        double x0 = half - 1500, z0 = -(PlaneUnwrap.PITCH * half) / 2 + 0;               // face 1 (cx = 0, cz = -pitch/2), v = 0 line
         Vec3 prev = PlaneUnwrap.inverse(x0, z0, half);
         double worst = 0;
         for (double dx = 1; dx <= 3000; dx += 1) {
             Vec3 d = PlaneUnwrap.inverse(x0 + dx, z0, half);
-            worst = Math.max(worst, d.distance(prev) * 6_371_000.0);
+            worst = Math.max(worst, d.distance(prev) * PlanetDefinition.EARTH_RADIUS);
             prev = d;
         }
         assertEquals(1.0, worst, 0.02, "1 plane metre must stay ~1 planet metre across the edge: " + worst);

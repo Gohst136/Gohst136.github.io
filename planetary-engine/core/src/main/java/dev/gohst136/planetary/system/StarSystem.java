@@ -165,11 +165,14 @@ public final class StarSystem {
     /** Sun-like star, the Earth-like planet (seed from the world), a Moon, and a second, smaller rocky planet. */
     public static StarSystem example(long earthSeed) {
         final double G = 6.674e-11;
-        double sunGm = G * 1.989e30, earthGm = G * 5.972e24, moonGm = G * 7.342e22, marsGm = G * 6.417e23;
+        // the Earth and Moon radii are fixed by the block grid (PlanetDefinition); their GM keeps the real surface gravity (9.81 and 1.62 m/s^2)
+        double earthR = dev.gohst136.planetary.planet.PlanetDefinition.EARTH_RADIUS, moonR = dev.gohst136.planetary.planet.PlanetDefinition.MOON_RADIUS;
+        double sunGm = G * 1.989e30, earthGm = 9.81 * earthR * earthR, moonGm = 1.62 * moonR * moonR, marsGm = G * 6.417e23;
+        double moonA = Math.cbrt(earthGm * Math.pow(2.3606e6 / (2.0 * Math.PI), 2));      // keeps the sidereal month (27.3 d) with the scaled Earth GM
         return new StarSystem(List.of(
                 new BodyDefinition("sun", null, BodyDefinition.Kind.STAR, 6.957e8, sunGm, 0, 0, 0, 0, 0, 0, 2.2e6, 0, 1, 3.828e26),
-                new BodyDefinition("earth", "sun", BodyDefinition.Kind.PLANET, 6.371e6, earthGm, 1.496e11, 0.0167, 0, 1.99, 0, 0.0, 86164.1, Math.toRadians(23.44), earthSeed, 0),
-                new BodyDefinition("moon", "earth", BodyDefinition.Kind.MOON, 1.7374e6, moonGm, 3.844e8, 0.0549, Math.toRadians(5.1), 0.0, 0.0, 1.0, 2.36e6, Math.toRadians(6.7), earthSeed ^ 0x5DEECE66DL, 0),
+                new BodyDefinition("earth", "sun", BodyDefinition.Kind.PLANET, earthR, earthGm, 1.496e11, 0.0167, 0, 1.99, 0, 0.0, 86164.1, Math.toRadians(23.44), earthSeed, 0),
+                new BodyDefinition("moon", "earth", BodyDefinition.Kind.MOON, moonR, moonGm, moonA, 0.0549, Math.toRadians(5.1), 0.0, 0.0, 1.0, 2.36e6, Math.toRadians(6.7), earthSeed ^ 0x5DEECE66DL, 0),
                 new BodyDefinition("ares", "sun", BodyDefinition.Kind.PLANET, 3.39e6, marsGm, 2.279e11, 0.0934, Math.toRadians(1.85), 5.0, 0.86, 3.1, 88642.7, Math.toRadians(25.2), earthSeed ^ 0xBB67AE85L, 0)));
     }
 }

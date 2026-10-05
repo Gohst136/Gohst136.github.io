@@ -21,7 +21,7 @@ public final class PlanetWorld {
     }
 
     /** Half the side of one cube-face square in the vanilla plane, in blocks (= planet metres). */
-    public static double halfSpan(long seed) { return PlanetDefinition.earth(seed).radius() * Math.PI / 4.0; }
+    public static double halfSpan(long seed) { return dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(PlanetDefinition.earth(seed).radius()); }
 
     // ---- the Moon (second body with real chunks) ----------------------------------------------------------------------------------
 
@@ -37,5 +37,5 @@ public final class PlanetWorld {
 
     public static dev.gohst136.planetary.terrain.TerrainSampler moonTerrain(long seed) { return (dev.gohst136.planetary.terrain.TerrainSampler) moon(seed)[2]; }
     public static PlanetDefinition moonPlanet(long seed) { return (PlanetDefinition) moon(seed)[1]; }
-    public static double moonHalfSpan(long seed) { return moonPlanet(seed).radius() * Math.PI / 4.0; }
+    public static double moonHalfSpan(long seed) { return dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(moonPlanet(seed).radius()); }
 }

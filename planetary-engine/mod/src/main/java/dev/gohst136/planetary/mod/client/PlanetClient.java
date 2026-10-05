@@ -409,7 +409,7 @@ public final class PlanetClient {
         bubbleGroundRadius = PLANET.radius() + TERRAIN.heightAt(anchor);
         if (realWorld) return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius(), 0.0, "earth", 0.0,
                 dev.gohst136.planetary.planet.VerticalMap::toMeters, dev.gohst136.planetary.planet.VerticalMap::toBlockY);
-        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
+        var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, dev.gohst136.planetary.planet.PlaneUnwrap.halfSpan(PLANET.radius()), 0.0);
         double y0 = vanilla.exactHeight(m.x1(), m.z1()) + 63.0;
         return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius() + TERRAIN.heightAt(anchor), y0);
     }

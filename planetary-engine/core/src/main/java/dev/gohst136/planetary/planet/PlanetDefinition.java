@@ -16,21 +16,26 @@ public record PlanetDefinition(
         double atmosphereHeight,
         int terrainOctaves) {
 
-    /** An Earth-sized default; vanilla blocks are 1 m so this is a 6371 km world. */
+    /** Radius with pi*R/4 = 2^22 exactly: the cube-face squares of the vanilla plane are 2^23 blocks wide, so LOD cells are whole powers of two blocks (see PlaneUnwrap.halfSpan). */
+    public static final double EARTH_RADIUS = 16_777_216.0 / Math.PI;           // 5340 km
+    /** The Moon likewise: pi*R/4 = 2^20. */
+    public static final double MOON_RADIUS = 4_194_304.0 / Math.PI;             // 1335 km
+
+    /** An Earth-like default; vanilla blocks are 1 m. */
     public static PlanetDefinition earthlike(long seed) {
-        return new PlanetDefinition("planetary:earthlike", seed, 6_371_000.0, 9.81, 0.0,
+        return new PlanetDefinition("planetary:earthlike", seed, EARTH_RADIUS, 9.81, 0.0,
                 8_800.0, 4_000.0, 86_400.0, 100_000.0, 22);
     }
 
     /** Realistic Earth-sized planet: continents, oceans, mountain belts, rivers and climate (see RealisticTerrain). */
     public static PlanetDefinition earth(long seed) {
-        return new PlanetDefinition("planetary:earth", seed, 6_371_000.0, 9.81, 0.0,
+        return new PlanetDefinition("planetary:earth", seed, EARTH_RADIUS, 9.81, 0.0,
                 9_000.0, 5_600.0, 86_400.0, 100_000.0, 17);
     }
 
     /** Macro shape from 11 noise octaves (>= ~4 km wavelength); finer detail comes from a vanilla-worldgen layer. */
     public static PlanetDefinition earthlikeVanilla(long seed) {
-        return new PlanetDefinition("planetary:earthlike_vanilla", seed, 6_371_000.0, 9.81, 0.0,
+        return new PlanetDefinition("planetary:earthlike_vanilla", seed, EARTH_RADIUS, 9.81, 0.0,
                 9_100.0, 4_200.0, 86_400.0, 100_000.0, 11);
     }
 
