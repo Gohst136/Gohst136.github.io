@@ -17,7 +17,7 @@ public final class CraterTerrain implements TerrainSampler {
     private final double radius;
     private final double[] tint;
 
-    private static final int SCALES = 9;                   // crater diameters from ~ 1/12 of the radius down by 1.7x per scale
+    private static final int SCALES = 22;                  // crater diameters from 0.16 of the radius down by 1.7x per scale, to ~ 2 m on the Moon
     private static final double BASE_DIAMETER_FRACTION = 0.16, SHRINK = 1.7;
 
     public CraterTerrain(PlanetDefinition planet) { this(planet, 1.03, 1.0, 0.96); }
@@ -74,12 +74,12 @@ public final class CraterTerrain implements TerrainSampler {
         }
         // fine regolith relief, fading with the cell size
         double det = 0.0, amp = 30.0, f = 400.0;
-        for (int k = 0; k < 10; k++) {
+        for (int k = 0; k < 16; k++) {
             double wl = 2.0 * Math.PI * radius / f;
             double fade = cell <= 0 ? 1.0 : Math.max(0.0, Math.min(1.0, wl / (2.0 * cell) - 1.0));
             if (fade <= 0) break;
             det += fade * amp * n.noise(x * f + 11, y * f - 5, z * f + 2);
-            amp *= 0.62; f *= 2.0;
+            amp *= 0.7; f *= 2.0;
         }
         double height = h - craterDepth + ejecta + det;
         height = Math.max(-planet.maxDepth(), Math.min(planet.maxHeight(), height));
@@ -102,9 +102,9 @@ public final class CraterTerrain implements TerrainSampler {
             if (dm < 2.0 * cell) { double a = dm * 0.2 * 0.5; sq += a * a * 0.5; }
         }
         double amp = 30.0, f = 400.0;
-        for (int k = 0; k < 10; k++) {
+        for (int k = 0; k < 16; k++) {
             if (2.0 * Math.PI * radius / f < 2.0 * cell) sq += amp * amp * 0.25;
-            amp *= 0.62; f *= 2.0;
+            amp *= 0.7; f *= 2.0;
         }
         return Math.sqrt(sq);
     }
