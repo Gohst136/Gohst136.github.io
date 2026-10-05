@@ -46,6 +46,8 @@ public final class PlanetClient {
     static boolean ship;
     static Vec3 velI = Vec3.ZERO;
     static final double SHIP_THRUST = 50.0;            // m/s^2 (boost x20)
+    static final KeyMapping ROLL_LEFT = new KeyMapping("key.planetary.roll_left", GLFW.GLFW_KEY_Z, "key.categories.planetary");
+    static final KeyMapping ROLL_RIGHT = new KeyMapping("key.planetary.roll_right", GLFW.GLFW_KEY_C, "key.categories.planetary");
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
     static PlanetDefinition PLANET = PlanetDefinition.earth(20240601L);
@@ -64,6 +66,39 @@ public final class PlanetClient {
     private static Vec3 toE(Vec3 vI) { return SYSTEM.systemToBody("earth", simTime, vI); }
     private static Vec3 toI(Vec3 vE) { return SYSTEM.bodyToSystem("earth", simTime, vE); }
 
+    // ---- free-flight camera ---------------------------------------------------------------------------------------------------
+    // In free flight the camera is a real 6-DoF fly camera, not the vanilla pitch/yaw camera (which clamps pitch and forced a horizon
+    // roll near the planet). Its orientation (flyFwd, flyUp) lives in the axes of the CURRENT frame (system axes in space, planet-fixed
+    // near the planet, Moon-fixed near the Moon), so it never jumps when the frame switches. The vanilla camera is used only inside the
+    // real-world bubble (touching blocks). Mouse deltas are read from the player's yaw/pitch, which is reset every frame.
+    static Vec3 flyFwd = new Vec3(-1, 0, 0), flyUp = new Vec3(0, 1, 0);
+    private static boolean flyResync = true;
+    private static float flyNeutralYaw, flyNeutralPitch;
+    private static Vec3 bubFwdE, bubUpE;                  // last real-player camera in E axes: adopted when the bubble is left
+
+    static boolean flyActive() { return active && !bubbleLive && !PlanetAutoTest.enabled(); }
+
+    /** E-axes vector -> the axes of the current free-flight frame. */
+    private static Vec3 toFrame(Vec3 vE) {
+        if (moonFixed && BODIES != null) return BODIES.dirFromE("moon", simTime, vE);
+        return inertial ? toI(vE) : vE;
+    }
+
+    private static void stepFlyCam(Minecraft mc, double dt) {
+        var p = mc.player;
+        if (p == null) return;
+        if (flyResync) {
+            if (bubFwdE != null) { flyFwd = toFrame(bubFwdE); flyUp = toFrame(bubUpE); bubFwdE = null; bubUpE = null; }
+            flyNeutralYaw = p.getYRot(); flyNeutralPitch = p.getXRot(); flyResync = false;
+        }
+        double yaw = Math.toRadians(p.getYRot() - flyNeutralYaw), pitch = Math.toRadians(p.getXRot() - flyNeutralPitch);
+        p.setYRot(flyNeutralYaw); p.setXRot(flyNeutralPitch);                 // consumed: the vanilla pitch clamp never limits the fly camera
+        p.yRotO = flyNeutralYaw; p.xRotO = flyNeutralPitch;
+        double roll = ((ROLL_RIGHT.isDown() ? 1 : 0) - (ROLL_LEFT.isDown() ? 1 : 0)) * Math.toRadians(60.0) * dt;
+        Vec3[] fu = dev.gohst136.planetary.camera.FlyCamera.rotate(flyFwd, flyUp, yaw, pitch, roll);
+        flyFwd = fu[0]; flyUp = fu[1];
+    }
+
     /** Local vertical: of the other body whose surface is within 2 radii, else the given default (the home planet's). */
     private static Vec3 nearBodyUp(Vec3 posE, Vec3 fallback) {
         if (BODIES == null) return fallback;
@@ -75,6 +110,7 @@ public final class PlanetClient {
     }
 
     private static void aimPlayer(Minecraft mc, Vec3 dir) {
+        if (flyActive()) return;                                             // the fly camera keeps its own orientation across frame switches
         Vec3 d = dir.normalize();
         mc.player.setYRot((float) Math.toDegrees(Math.atan2(-d.x(), d.z())));
         mc.player.setXRot((float) Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, d.y())))));
@@ -152,7 +188,7 @@ public final class PlanetClient {
     @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
     public static final class ModBus {
         @SubscribeEvent
-        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(SHIP); e.register(BOOST); e.register(DEBUG_VIEW); }
+        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(SHIP); e.register(ROLL_LEFT); e.register(ROLL_RIGHT); e.register(BOOST); e.register(DEBUG_VIEW); }
     }
 
     @SubscribeEvent
@@ -177,6 +213,7 @@ public final class PlanetClient {
                 pos = new Vec3(PLANET.radius() + 20_000_000.0, 0, 0);       // 20,000 km above the surface
                 mc.player.setYRot(90f);                                    // yaw 90 looks along -X, at the planet
                 mc.player.setXRot(0f);
+                flyFwd = new Vec3(-1, 0, 0); flyUp = new Vec3(0, 1, 0); flyResync = true; bubFwdE = null;
                 lastNanos = System.nanoTime();
                 if (selector == null) {
                     chooseTerrain(mc);
@@ -254,6 +291,7 @@ public final class PlanetClient {
             double groundH = moon ? dev.gohst136.planetary.mod.world.PlanetWorld.moonTerrain(PLANET.seed()).heightAt(anchor) : TERRAIN.heightAt(anchor);
             double parkY = realWorld ? Math.max(0.0, moon ? dev.gohst136.planetary.planet.VerticalMap.toBlockYAirless(groundH) : dev.gohst136.planetary.planet.VerticalMap.toBlockY(groundH)) + 60 : bubble.y0 + 60;
             teleportReal(bubble.x0, parkY, bubble.z0, 0f, 0f);
+            flyResync = true; bubFwdE = null;
             return;
         }
         if (!preloaded) return;
@@ -262,6 +300,7 @@ public final class PlanetClient {
             float[] yp = bubble.yawPitch(fwdBody);
             pendingTp = new double[]{v[0], v[1] - mc.player.getEyeHeight(), v[2]};
             teleportReal(pendingTp[0], pendingTp[1], pendingTp[2], yp[0], yp[1]);
+            flyResync = true; bubFwdE = null;
         }
         if (pendingTp != null && !bubbleLive) {
             double dx = mc.player.getX() - pendingTp[0], dy = mc.player.getY() - pendingTp[1], dz = mc.player.getZ() - pendingTp[2];
@@ -418,6 +457,8 @@ public final class PlanetClient {
         Vec3 lft = new Vec3(left.x(), left.y(), left.z());
         Vec3 radial = pos.normalize();
         Vec3 vanillaUp = new Vec3(cam.getUpVector().x(), cam.getUpVector().y(), cam.getUpVector().z());
+        final boolean fly = flyActive();
+        if (fly) { stepFlyCam(mc, dt); fwd = flyFwd; vanillaUp = flyUp; lft = flyUp.cross(flyFwd); }
         boolean inertialView = false;
         boolean moonView = false;                                            // vanilla view axes = Moon-fixed axes this frame
         Bodies.Instance moonInst = (BODIES != null && realWorld) ? BODIES.instance("moon") : null;
@@ -448,8 +489,9 @@ public final class PlanetClient {
                 if (o.keyDown.isDown()) move = move.sub(fwd);
                 if (o.keyLeft.isDown()) move = move.add(lft);
                 if (o.keyRight.isDown()) move = move.sub(lft);
-                if (o.keyJump.isDown()) move = move.add(radialB);
-                if (o.keyShift.isDown()) move = move.sub(radialB);
+                Vec3 upM = fly ? vanillaUp : radialB;
+                if (o.keyJump.isDown()) move = move.add(upM);
+                if (o.keyShift.isDown()) move = move.sub(upM);
                 if (move.length() > 0) {
                     Vec3 target = posM.add(move.normalize().mul(speed * dt));
                     var hit = dev.gohst136.planetary.physics.SweptCollision.move(moonInst.terrain, rm, posM, target, 2.0, moonInst.terrain.slopeBound());
@@ -484,7 +526,7 @@ public final class PlanetClient {
 
             var o = mc.options;
             Vec3 move = Vec3.ZERO;
-            Vec3 upDir = inertial ? toI(radial) : radial;                  // radial in the axes the movement is expressed in
+            Vec3 upDir = fly ? vanillaUp : (inertial ? toI(radial) : radial);                  // radial in the axes the movement is expressed in
             if (o.keyUp.isDown()) move = move.add(fwd);
             if (o.keyDown.isDown()) move = move.sub(fwd);
             if (o.keyLeft.isDown()) move = move.add(lft);
@@ -530,8 +572,10 @@ public final class PlanetClient {
             Vec3 radialB = posB.normalize();
             boolean onMoon = bubble.body.equals("moon");
             syncDayTime(mc, onMoon);
+            { var uv = cam.getUpVector(); Vec3 uB = bubble.direction(uv.x(), uv.y(), uv.z()); bubUpE = onMoon ? BODIES.dirToE("moon", simTime, uB) : uB; flyResync = true; }
             pos = onMoon ? BODIES.toE("moon", simTime, posB) : posB;
             fwd = onMoon ? BODIES.dirToE("moon", simTime, fwdB) : fwdB;
+            bubFwdE = fwd;
             radial = onMoon ? BODIES.dirToE("moon", simTime, radialB) : radialB;
             // flew back out of the bubble: more than 800 m above the LOCAL ground (not above sea level: the landing site can lie on a
             // plateau), or more than 3 km away from the anchor
@@ -544,6 +588,7 @@ public final class PlanetClient {
             }
         }
 
+        if (fly) { flyFwd = toFrame(fwd); flyUp = toFrame(vanillaUp); }       // fwd / vanillaUp are in E axes here: store them in the frame axes of the next frame
         Matrix4f projIn = e.getProjectionMatrix();
         double tanHalf = 1.0 / projIn.m11();
         double fovY = 2.0 * Math.atan(tanHalf);
@@ -586,6 +631,12 @@ public final class PlanetClient {
             camUp = desired;
             org.joml.Vector3f dv = viewRot.transformDirection(new org.joml.Vector3f((float) desired.x(), (float) desired.y(), (float) desired.z()));
             viewRot = new Matrix4f().rotateZ((float) Math.atan2(dv.x, dv.y)).mul(viewRot);
+        }
+        if (fly) {                                                            // the fly camera's own orientation (E axes), no vanilla view, no auto-level
+            Vec3 fE = fwd, uE = vanillaUp, rE = fE.cross(uE);
+            viewRot = new Matrix4f((float) rE.x(), (float) uE.x(), (float) -fE.x(), 0f, (float) rE.y(), (float) uE.y(), (float) -fE.y(), 0f,
+                    (float) rE.z(), (float) uE.z(), (float) -fE.z(), 0f, 0f, 0f, 0f, 1f);
+            camUp = uE;
         }
         CameraView view = new CameraView(pos, fwd, camUp, fovY, h, w, speed);
 

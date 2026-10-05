@@ -1,6 +1,8 @@
 {
   "key.planetary.toggle": "Toggle planet flight view",
   "key.planetary.ship": "Spacecraft mode (Newtonian thrust and gravity, in space)",
+  "key.planetary.roll_left": "Fly camera: roll left",
+  "key.planetary.roll_right": "Fly camera: roll right",
   "key.planetary.boost": "Planet flight speed boost",
   "key.planetary.debug": "Planet debug view (LOD colours / wireframe)",
   "key.categories.planetary": "Planetary Engine"
