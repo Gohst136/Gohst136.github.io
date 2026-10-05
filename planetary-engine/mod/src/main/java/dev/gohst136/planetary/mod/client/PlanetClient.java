@@ -131,6 +131,8 @@ public final class PlanetClient {
         Vec3 d = BODIES.sunDirE(simTime);
         return new float[]{(float) d.x(), (float) d.y(), (float) d.z()};
     }
+    /** Diagnostics (benchmark): draw the planet (block skin included) AFTER the real world, replacing it, to compare the two pixel by pixel. */
+    static boolean diagSkinOnly;
     static boolean forceDaySync;               // benchmark: exercise the sun-derived day time
     private static int dayTimeFrames;
     /**
@@ -444,7 +446,7 @@ public final class PlanetClient {
     public static void render(RenderLevelStageEvent e) {
         if (!active || selector == null || suspended) return;
         // free flight owns the whole frame (AFTER_LEVEL); in the bubble the planet is the backdrop of the real world (AFTER_SKY)
-        if (e.getStage() != (bubbleLive ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
+        if (e.getStage() != (bubbleLive && !diagSkinOnly ? RenderLevelStageEvent.Stage.AFTER_SKY : RenderLevelStageEvent.Stage.AFTER_LEVEL)) return;
         Minecraft mc = Minecraft.getInstance();
         long now = System.nanoTime();
         double dt = Math.min(0.1, (now - lastNanos) / 1e9);
@@ -685,7 +687,7 @@ public final class PlanetClient {
         BODIES.moonCullScale = moonBubble ? cullScale : 1.0;
         if (!planetOff) BODIES.draw(simTime, pos, fwd, camUp, fovY, h, w, speed, viewRot, moonBubble ? terrainRot : null, proj);
         if (!planetOff) renderer.drawFrame(lastResult.patches, new double[]{pos.x(), pos.y(), pos.z()}, viewRot, moonBubble ? viewRot : terrainRot, proj, sun);
-        if (bubbleLive) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
+        if (bubbleLive && !diagSkinOnly) RenderSystem.clear(256, Minecraft.ON_OSX);        // real world draws on top of the planet backdrop
     }
 
     @SubscribeEvent

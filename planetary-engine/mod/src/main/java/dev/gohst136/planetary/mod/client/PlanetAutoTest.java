@@ -348,7 +348,11 @@ final class PlanetAutoTest {
         if (post > 0) {
             if (pendingName != null) return;
             postFrames++;
-            if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 10; postFrames = 0; }
+            if (post == 1 && postFrames > 60) { pendingName = "bubble_planet_on.png"; post = 40; postFrames = 0; }
+            else if (post == 40) { PlanetClient.diagSkinOnly = true; post = 41; postFrames = 0; }                              // the same pose, but the block skin instead of the real chunks
+            else if (post == 41 && postFrames > 60) { pendingName = "bubble_skin_only.png"; post = 42; postFrames = 0; }
+            else if (post == 42) { PlanetClient.diagSkinOnly = false; post = 43; postFrames = 0; }
+            else if (post == 43 && postFrames > 90) { skinDiff(); post = 10; postFrames = 0; }
             else if (post == 10) { GlPlanetRenderer.debugMode = 1; post = 11; postFrames = 0; }
             else if (post == 11 && postFrames > 20) { pendingName = "debug_levels.png"; post = 12; postFrames = 0; }
             else if (post == 12) { GlPlanetRenderer.debugMode = 2; post = 13; postFrames = 0; }
@@ -452,6 +456,36 @@ final class PlanetAutoTest {
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }
 
     /** Called from RenderGuiEvent.Post: the frame is complete (sky, planet, GUI), so grab it. */
+    /** Pixel comparison of "real chunks" and "block skin" screenshots of the same pose (the lower half, below the text overlay); results in stats.txt and diff_amplified.png. */
+    private static void skinDiff() {
+        try {
+            File shots = new File(outDir, "screenshots");
+            java.awt.image.BufferedImage a = javax.imageio.ImageIO.read(new File(shots, "bubble_planet_on.png")), b = javax.imageio.ImageIO.read(new File(shots, "bubble_skin_only.png"));
+            int w = Math.min(a.getWidth(), b.getWidth()), h = Math.min(a.getHeight(), b.getHeight());
+            java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            double sr = 0, sg = 0, sb = 0, sl = 0; long n = 0, over16 = 0, over48 = 0;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                int p = a.getRGB(x, y), q = b.getRGB(x, y);
+                int dr = Math.abs(((p >> 16) & 255) - ((q >> 16) & 255)), dg = Math.abs(((p >> 8) & 255) - ((q >> 8) & 255)), db = Math.abs((p & 255) - (q & 255));
+                out.setRGB(x, y, (Math.min(255, dr * 4) << 16) | (Math.min(255, dg * 4) << 8) | Math.min(255, db * 4));
+                if (y < h / 2) continue;
+                sr += dr; sg += dg; sb += db; n++;
+                // signed luminance difference: positive = the block skin is brighter than the real chunks
+                sl += (((q >> 16) & 255) * 0.3 + ((q >> 8) & 255) * 0.59 + (q & 255) * 0.11) - (((p >> 16) & 255) * 0.3 + ((p >> 8) & 255) * 0.59 + (p & 255) * 0.11);
+                int m = Math.max(dr, Math.max(dg, db));
+                if (m > 16) over16++;
+                if (m > 48) over48++;
+            }
+            javax.imageio.ImageIO.write(out, "png", new File(shots, "diff_amplified.png"));
+            String line = String.format("SKINDIFF real chunks vs block skin, same pose (lower half): mean |diff| R=%.1f G=%.1f B=%.1f (of 255), pixels differing by >16: %.1f%%, >48: %.1f%%, skin brighter by %.1f (luminance)",
+                    sr / n, sg / n, sb / n, 100.0 * over16 / n, 100.0 * over48 / n, sl / n);
+            System.out.println("[planetary-autotest] " + line);
+            try (FileWriter w2 = new FileWriter(new File(outDir, "stats.txt"), true)) { w2.write(line + "\n"); }
+        } catch (Throwable t) {
+            System.out.println("[planetary-autotest] skin diff failed: " + t);
+        }
+    }
+
     static void captureIfPending() {
         if (pendingName == null) return;
         Minecraft mc = Minecraft.getInstance();

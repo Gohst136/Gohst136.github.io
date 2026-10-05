@@ -138,3 +138,18 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
 
 - **Measured after these changes** (commit 841ef95, run on a 3440x1440 window, i.e. ~3.7x the pixels of the 1280x720 baseline, so more patches and slower streaming than the older numbers): 0 hole frames in
   transit and lap, real chunks equal the planet function (FIDELITY 100%), mesh build 3.4 ms per 32x32 patch (+~26% from the parent sampling). Compare runs only at the same resolution.
+
+## 17. The block skin: seamless descent into real chunks (design, in progress)
+Goal: no visible difference between the far terrain and the real chunks you land in. Distant Horizons / Voxy draw far terrain as block columns read from already
+generated chunks (slow, and never identical); here the planet is a function, so the far blocks are built directly from the SAME column decisions as the chunk generator and
+drawn with the game's own block atlas, lightmap and biome colours.
+- `PlanetColumns` is the single definition of a block column (ground height, water, surface/filler block); the generator and the skin both use it.
+- The planet radius is 2^24/pi, so a cube-face square of the vanilla plane is 2^23 blocks wide and quadtree cells of level L are exactly 2^(18-L) blocks, aligned to the block grid
+  (`PlaneUnwrap.halfSpan`, `PITCH = 2.25`; test `BlockGridAlignmentTest`). Level 18 = real blocks.
+- `skin/BlockSkinBuilder` (pure Java, tested): a patch of 32x32 cells -> flat-topped columns with walls (surface block, 3 filler, then stone, like the generator), water surfaces, sky light under
+  water, skirts at patch borders; runs of identical cells are merged into one quad (~1000 quads per patch). Texture coordinates are block-space; the shader tiles the sprite per block.
+- `SkinStyleImpl` takes sprites from the game's block models and tints from `Biome.getGrassColor/getWaterColor` (via the same biome pick as the generator). `GlPlanetRenderer` draws levels
+  15-18 (cells 8 .. 1 block) with its own shader that samples the block atlas and the game's lightmap like the chunk shader does; coarser levels stay smooth meshes. The selector stops at level 18.
+- Measured by the benchmark: `SKINDIFF` compares a screenshot with real chunks to one with the skin in their place (same pose), plus `diff_amplified.png`.
+- Not done yet: vanilla ambient occlusion and per-block texture variants at 1-block cells, translucency of water over the sea floor, trees/plants (the generator still places vanilla features
+  randomly; they will be replaced by a deterministic placement shared with the skin), calibrating the smooth planet's colours and lighting to the skin, dithered cross-fade between skin levels.
