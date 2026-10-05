@@ -23,7 +23,7 @@ class BodyPlaneTest {
         for (double h = -9000; h < 9000; h += 13) {
             double y = VerticalMap.toBlockYAirless(h);
             assertTrue(y >= prev - 1e-9);
-            assertTrue(y >= -250.0 - 1e-9 && y <= 1270);
+            assertTrue(y >= -250.0 - 1e-9 && y <= 2031);
             prev = y;
         }
         assertEquals(VerticalMap.toBlockY(500), VerticalMap.toBlockYAirless(500), 1e-12);

@@ -38,7 +38,7 @@ import java.util.concurrent.CompletableFuture;
  * Fills real chunks from the planet: each block column (x, z) of the vanilla plane maps to a sphere direction
  * ({@link PlaneUnwrap#inverse}), and {@link RealisticTerrain} gives height, rivers and climate there, the same function the
  * far-field mesh uses. Biomes come from {@link PlanetBiomeSource}, so vanilla vegetation features grow where the planet says
- * forest. Vertical mapping: {@link VerticalMap} (sea level Y 0, min_y -256, 1536 high).
+ * forest. Vertical mapping: {@link VerticalMap} (sea level Y 0, min_y -256, 2288 high).
  * No caves, no ore veins and no villages in this first version (structure sets still apply through the biome source).
  */
 public final class PlanetChunkGenerator extends ChunkGenerator {

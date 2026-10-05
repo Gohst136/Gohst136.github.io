@@ -37,7 +37,7 @@ class PlaneInverseTest {
         for (double h = -6000; h < 9000; h += 7) {
             double y = VerticalMap.toBlockY(h);
             assertTrue(y >= prev);
-            assertTrue(y >= -256 && y <= 1270);
+            assertTrue(y >= -256 && y <= 2031);
             prev = y;
         }
         for (double h : new double[]{-100, 0, 300, 799, 900, 2500, 6000}) assertEquals(h, VerticalMap.toMeters(VerticalMap.toBlockY(h)), 1e-6);

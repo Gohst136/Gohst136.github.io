@@ -26,7 +26,7 @@ public final class CraterTerrain implements TerrainSampler {
     /** @param tintR/G/B colour multipliers of the grey albedo (Moon: nearly neutral, Mars-like: rust). */
     public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB) { this(planet, tintR, tintG, tintB, 1.0); }
 
-    /** @param reliefScale scales all heights: the real chunk dimension is 1536 blocks high, so a body that is meant to be walked on keeps its shape but with reduced relief. */
+    /** @param reliefScale scales all heights: the real chunk dimension is 2288 blocks high, so a body that is meant to be walked on keeps its shape but with reduced relief. */
     public CraterTerrain(PlanetDefinition planet, double tintR, double tintG, double tintB, double reliefScale) {
         this.scale = reliefScale;
         this.planet = planet; this.n = new Noise3(planet.seed() ^ 0x4D6F6F6EL); this.radius = planet.radius();

@@ -88,7 +88,7 @@ public final class RealisticTerrain implements TerrainSampler {
         double orog = smooth(-0.12, 0.28, n.fbm(qx * 2.2 + 71, qy * 2.2 - 4, qz * 2.2 + 9, 3));
         double mx = qx + 0.12 * wy, my = qy + 0.12 * wz, mz = qz + 0.12 * wx;
         double ridge = n.ridged(mx * 4.8 + 5.5, my * 4.8 - 2.2, mz * 4.8 + 8.1, 5);
-        double mountain = orog * landW * Math.pow(ridge, 1.7) * 9500.0;
+        double mountain = orog * landW * Math.pow(ridge, 1.7) * 7500.0;
 
         // ---- detail relief (octaves fade out below 2 cells) -----------------------------------------------------
         double rough = (0.6 + 0.9 * orog) * (0.3 + 0.7 * landW);

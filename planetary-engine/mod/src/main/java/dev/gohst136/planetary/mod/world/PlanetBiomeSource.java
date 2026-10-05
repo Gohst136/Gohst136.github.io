@@ -51,7 +51,7 @@ public final class PlanetBiomeSource extends BiomeSource {
     @Override protected Stream<Holder<Biome>> collectPossibleBiomes() { return biomes.values().stream(); }
 
     /**
-     * Vanilla asks for every height quart of a column (1536 / 4 = 384 calls per (x, z)), but the planet's biome depends on
+     * Vanilla asks for every height quart of a column (2288 / 4 = 572 calls per (x, z)), but the planet's biome depends on
      * (x, z) only: a small per-thread cache turns ~6000 climate evaluations per chunk into 16.
      */
     private static final class ColumnCache extends java.util.LinkedHashMap<Long, ResourceKey<Biome>> {
