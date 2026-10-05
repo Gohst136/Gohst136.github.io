@@ -115,3 +115,9 @@ Not done yet: the real player's collision at speed inside the bubble (vanilla ph
 - Phase 13 (GPU-driven culling, Hi-Z, indirect draws): the benchmark shows <= ~370 drawn patches (<= ~4000 resident), selection 0.03-0.3 ms on the CPU, frame time avg 8.7 ms
   with p99 14 ms at 4000 km/s. CPU culling is not the limiter at this scale, so the extra complexity is not justified yet; revisit if patch counts grow ~10x (denser
   grids, many bodies, vegetation instancing). Hole frames stay at 0.
+
+## 15. Spacecraft mode (Phase 12, first part)
+- `physics/Gravity`: N-body acceleration for a test particle in the home body's non-rotating frame (direct attraction + tidal terms of Moon/Sun) and a symplectic
+  leapfrog step with thrust. Unit test: 10 revolutions of a 400 km circular orbit keep the radius within 50 m; Moon/Sun perturbation is tidal-small.
+- In game: key N (in space, inertial frame) switches to Newtonian flight: WASD/Space/Shift thrust (50 m/s^2, Ctrl x20), gravity bends the path, swept collision stops at the
+  ground (inelastic), the HUD shows speed and Pe/Ap. Compiled, NOT exercised by the benchmark yet; no atmosphere drag, no fuel, no vehicle entity/model.

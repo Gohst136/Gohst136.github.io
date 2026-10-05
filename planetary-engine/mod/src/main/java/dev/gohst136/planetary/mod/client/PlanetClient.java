@@ -41,6 +41,11 @@ public final class PlanetClient {
 
     static final KeyMapping TOGGLE = new KeyMapping("key.planetary.toggle", GLFW.GLFW_KEY_P, "key.categories.planetary");
     static final KeyMapping DEBUG_VIEW = new KeyMapping("key.planetary.debug", GLFW.GLFW_KEY_K, "key.categories.planetary");
+    static final KeyMapping SHIP = new KeyMapping("key.planetary.ship", GLFW.GLFW_KEY_N, "key.categories.planetary");
+    /** Newtonian spacecraft mode (in the inertial frame): thrust accelerates, gravity of the home body, Moon and Sun bends the path. */
+    static boolean ship;
+    static Vec3 velI = Vec3.ZERO;
+    static final double SHIP_THRUST = 50.0;            // m/s^2 (boost x20)
     static final KeyMapping BOOST = new KeyMapping("key.planetary.boost", GLFW.GLFW_KEY_LEFT_CONTROL, "key.categories.planetary");
 
     static PlanetDefinition PLANET = PlanetDefinition.earth(20240601L);
@@ -147,13 +152,14 @@ public final class PlanetClient {
     @EventBusSubscriber(modid = "planetary", value = Dist.CLIENT)
     public static final class ModBus {
         @SubscribeEvent
-        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(BOOST); e.register(DEBUG_VIEW); }
+        public static void keys(RegisterKeyMappingsEvent e) { e.register(TOGGLE); e.register(SHIP); e.register(BOOST); e.register(DEBUG_VIEW); }
     }
 
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post e) {
         Minecraft mc = Minecraft.getInstance();
         PlanetAutoTest.tick(mc);
+        while (SHIP.consumeClick()) { ship = !ship && inertial && !PlanetAutoTest.enabled(); velI = Vec3.ZERO; }
         while (DEBUG_VIEW.consumeClick()) GlPlanetRenderer.debugMode = (GlPlanetRenderer.debugMode + 1) % 3;
         while (TOGGLE.consumeClick()) {
             if (mc.player == null) continue;
@@ -466,7 +472,7 @@ public final class PlanetClient {
                 if (!inertial && rr > 3.0 * PLANET.radius()) {
                     inertial = true; posI = toI(pos);
                     Vec3 nf = toI(fwd); aimPlayer(mc, nf); fwd = nf; lft = toI(lft); vanillaUp = toI(vanillaUp);   // keep looking at the same thing
-                } else if (inertial && rr < 2.2 * PLANET.radius()) {
+                } else if (inertial && !ship && rr < 2.2 * PLANET.radius()) {
                     inertial = false;
                     Vec3 nf = toE(fwd); aimPlayer(mc, nf); fwd = nf; lft = toE(lft);
                 }
@@ -485,7 +491,19 @@ public final class PlanetClient {
             if (o.keyRight.isDown()) move = move.sub(lft);
             if (o.keyJump.isDown()) move = move.add(upDir);
             if (o.keyShift.isDown()) move = move.sub(upDir);
-            if (move.length() > 0) {
+            if (ship && inertial) {
+                Vec3 thrust = move.length() > 0 ? move.normalize().mul(SHIP_THRUST * (BOOST.isDown() ? 20.0 : 1.0)) : Vec3.ZERO;
+                int n = (int) Math.max(1, Math.min(200, Math.ceil(dt / 0.05)));
+                double h = dt / n;
+                for (int i = 0; i < n; i++) {
+                    Vec3[] st = dev.gohst136.planetary.physics.Gravity.step(SYSTEM, "earth", simTime + i * h, posI, velI, thrust, h, true);
+                    var hit = dev.gohst136.planetary.physics.SweptCollision.move(TERRAIN, PLANET.radius(), toE(posI), toE(st[0]), 2.0, TERRAIN.slopeBound());
+                    if (hit.blocked()) { posI = toI(hit.position()); velI = Vec3.ZERO; collisionBlocked = true; break; }
+                    posI = st[0]; velI = st[1]; collisionBlocked = false;
+                }
+                pos = toE(posI);
+                speed = velI.length();
+            } else if (move.length() > 0) {
                 Vec3 step = move.normalize().mul(speed * dt);
                 Vec3 target = inertial ? toE(posI.add(step)) : pos.add(step);
                 // continuous collision: the move may never pass through terrain, however fast
@@ -625,6 +643,12 @@ public final class PlanetClient {
         if (BODIES != null) for (var in : BODIES.instances()) lines.add(in.def.id() + String.format(": %d patches, %.0f px radius", in.last == null ? 0 : in.last.patches.size(), in.angularRadiusPx));
         if (realWorld) lines.add(bubbleLive ? "REAL WORLD (normal Minecraft controls; fly above 800 m to leave)" : "sink below 300 m to land in the real world, P to leave planet mode");
         if (GlPlanetRenderer.debugMode > 0) lines.add("DEBUG (K): LOD level colours" + (GlPlanetRenderer.debugMode == 2 ? " + wireframe" : "") + "  coarse=red .. fine=violet");
+        if (ship && inertial) {
+            double mu = SYSTEM.body("earth").gm(), r = posI.length(), v2 = velI.dot(velI), eps = v2 / 2.0 - mu / r, hh = posI.cross(velI).length();
+            String orbit = eps < 0 ? String.format("Pe %.0f km  Ap %.0f km", (-mu / (2 * eps) * (1 - Math.sqrt(1 + 2 * eps * hh * hh / (mu * mu))) - PLANET.radius()) / 1000.0,
+                    (-mu / (2 * eps) * (1 + Math.sqrt(1 + 2 * eps * hh * hh / (mu * mu))) - PLANET.radius()) / 1000.0) : "escape trajectory";
+            lines.add(String.format("SHIP (N): v=%.2f km/s  %s  thrust WASD/Space/Shift (Ctrl x20)", Math.sqrt(v2) / 1000.0, orbit));
+        }
         lines.add(String.format("sim time %.1f h (x%.0f)  frame: %s", simTime / 3600.0, timeScale, inertial ? "inertial (space)" : "co-rotating with the planet"));
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }
