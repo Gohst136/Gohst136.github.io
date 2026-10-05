@@ -51,6 +51,18 @@ public final class PlanetClient {
     static dev.gohst136.planetary.system.StarSystem SYSTEM;
     static Bodies BODIES;
     static double simTime, timeScale;
+    /** Non-rotating (inertial) camera frame in space: vanilla view axes = system axes; posI is the camera relative to the planet centre in those axes. */
+    static boolean inertial;
+    static Vec3 posI = Vec3.ZERO;
+
+    private static Vec3 toE(Vec3 vI) { return SYSTEM.systemToBody("earth", simTime, vI); }
+    private static Vec3 toI(Vec3 vE) { return SYSTEM.bodyToSystem("earth", simTime, vE); }
+
+    private static void aimPlayer(Minecraft mc, Vec3 dir) {
+        Vec3 d = dir.normalize();
+        mc.player.setYRot((float) Math.toDegrees(Math.atan2(-d.x(), d.z())));
+        mc.player.setXRot((float) Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, d.y())))));
+    }
 
     /** Creates the star system, its renderers and the clock (idempotent). */
     static void initSystem() {
@@ -317,31 +329,51 @@ public final class PlanetClient {
         Vec3 fwd = new Vec3(look.x(), look.y(), look.z());
         Vec3 lft = new Vec3(left.x(), left.y(), left.z());
         Vec3 radial = pos.normalize();
+        Vec3 vanillaUp = new Vec3(cam.getUpVector().x(), cam.getUpVector().y(), cam.getUpVector().z());
+        boolean inertialView = false;
         if (!bubbleLive) {
+            // frame choice: near the planet the camera co-rotates with it (hovering stays hovering); in space it is inertial
+            if (!PlanetAutoTest.enabled() && SYSTEM != null) {
+                double rr = pos.length();
+                if (!inertial && rr > 3.0 * PLANET.radius()) {
+                    inertial = true; posI = toI(pos);
+                    Vec3 nf = toI(fwd); aimPlayer(mc, nf); fwd = nf; lft = toI(lft); vanillaUp = toI(vanillaUp);   // keep looking at the same thing
+                } else if (inertial && rr < 2.2 * PLANET.radius()) {
+                    inertial = false;
+                    Vec3 nf = toE(fwd); aimPlayer(mc, nf); fwd = nf; lft = toE(lft);
+                }
+            }
+            inertialView = inertial;
             double ground = PLANET.radius() + TERRAIN.heightAt(radial);
             double alt = Math.max(1.0, pos.length() - ground);
             speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
 
             var o = mc.options;
             Vec3 move = Vec3.ZERO;
+            Vec3 upDir = inertial ? toI(radial) : radial;                  // radial in the axes the movement is expressed in
             if (o.keyUp.isDown()) move = move.add(fwd);
             if (o.keyDown.isDown()) move = move.sub(fwd);
             if (o.keyLeft.isDown()) move = move.add(lft);
             if (o.keyRight.isDown()) move = move.sub(lft);
-            if (o.keyJump.isDown()) move = move.add(radial);
-            if (o.keyShift.isDown()) move = move.sub(radial);
+            if (o.keyJump.isDown()) move = move.add(upDir);
+            if (o.keyShift.isDown()) move = move.sub(upDir);
             if (move.length() > 0) {
-                Vec3 target = pos.add(move.normalize().mul(speed * dt));
+                Vec3 step = move.normalize().mul(speed * dt);
+                Vec3 target = inertial ? toE(posI.add(step)) : pos.add(step);
                 // continuous collision: the move may never pass through terrain, however fast
                 var hit = dev.gohst136.planetary.physics.SweptCollision.move(TERRAIN, PLANET.radius(), pos, target, 2.0, TERRAIN.slopeBound());
                 pos = hit.position();
+                if (inertial) posI = toI(pos);
                 collisionBlocked = hit.blocked();
+            } else if (inertial) {
+                pos = toE(posI);                                                // the planet turns underneath a hovering camera
             }
             if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); }
             // resting contact: never below 2 m above the ground at the final position (fine-detail height)
             Vec3 nd = pos.normalize();
             double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
-            if (pos.length() < minR) pos = nd.mul(minR);
+            if (pos.length() < minR) { pos = nd.mul(minR); if (inertial) posI = toI(pos); }
+            if (inertial) { fwd = toE(fwd); lft = toE(lft); vanillaUp = toE(vanillaUp); }       // from here on everything is in E axes
             handoff(mc, pos.normalize(), fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
         } else {
             // bubble: the camera IS the real player's camera, mapped into the planet frame
@@ -370,6 +402,13 @@ public final class PlanetClient {
         if (bubbleLive) {
             camUp = bubble.direction(up.x(), up.y(), up.z());
             viewRot = new Matrix4f(e.getModelViewMatrix()).mul(bubble.viewTransform());
+        } else if (inertialView) {
+            camUp = vanillaUp;                                            // no auto-level in space
+            Vec3 ex = toI(new Vec3(1, 0, 0)), ey = toI(new Vec3(0, 1, 0)), ez = toI(new Vec3(0, 0, 1));
+            viewRot = new Matrix4f(e.getModelViewMatrix()).mul(new Matrix4f(
+                    (float) ex.x(), (float) ex.y(), (float) ex.z(), 0f,
+                    (float) ey.x(), (float) ey.y(), (float) ey.z(), 0f,
+                    (float) ez.x(), (float) ez.y(), (float) ez.z(), 0f, 0f, 0f, 0f, 1f));
         } else if (desired.length() > 1e-3) {
             desired = desired.normalize();
             camUp = desired;
@@ -429,7 +468,7 @@ public final class PlanetClient {
                 FRAMES.p95(), FRAMES.p99(), FRAMES.worst()));
         lines.addAll(renderer.stats());
         if (BODIES != null) for (var in : BODIES.instances()) lines.add(in.def.id() + String.format(": %d patches, %.0f px radius", in.last == null ? 0 : in.last.patches.size(), in.angularRadiusPx));
-        lines.add(String.format("sim time %.1f h (x%.0f)", simTime / 3600.0, timeScale));
+        lines.add(String.format("sim time %.1f h (x%.0f)  frame: %s", simTime / 3600.0, timeScale, inertial ? "inertial (space)" : "co-rotating with the planet"));
         int y = 4;
         for (String s : lines) { e.getGuiGraphics().drawString(mc.font, s, 4, y, 0xFFFFFF, true); y += 10; }
         e.getGuiGraphics().flush();
