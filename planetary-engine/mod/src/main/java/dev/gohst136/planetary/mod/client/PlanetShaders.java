@@ -41,6 +41,8 @@ final class PlanetShaders {
             uniform int uDebug;       // 0 normal, 1 colour by LOD level, 2 level colours + wireframe (done on the CPU side)
             uniform float uLevel;
             uniform vec3 uCamPos;     // camera position in planet frame (float is fine for a direction)
+            uniform float uGamma;     // the game's brightness option
+            uniform float uVanilla;   // 1 near the ground: lit like Minecraft terrain (flat sky light colour), 0 in space: lit by the sun's direction
             out vec4 fragColor;
             void main() {
                 vec3 col = vColor.rgb;
@@ -66,10 +68,20 @@ final class PlanetShaders {
                 col *= 0.92 + 0.16 * jitter;
                 col = mix(col, col * 0.55, 0.35 * l1 + 0.5 * l16);
                 float diff = max(dot(n, uSun), 0.0);
+                // Minecraft lights terrain by the colour of the sky light of the moment, not by the sun's direction: top faces 1.0, steep slopes show block sides (0.6 .. 0.8)
+                float sunSin = dot(up, uSun);
+                float g = 0.8 * clamp(2.0 * sunSin + 0.2, 0.0, 1.0) + 0.2;                   // Level.getSkyDarken
+                float f1 = g * 0.95 + 0.05;
+                vec3 sk = vec3(g * 0.65 + 0.35, g * 0.65 + 0.35, 1.0) * f1;
+                sk = sk * 0.96 + 0.03;
+                sk = mix(sk, 1.0 - pow(1.0 - sk, vec3(4.0)), uGamma);
+                sk = clamp(sk * 0.96 + 0.03, 0.0, 1.0);                                       // LightTexture colour of (block 0, sky 15)
+                float steep = smoothstep(0.35, 1.2, length(cross(n, up)) / max(dot(n, up), 0.05));
+                vec3 vanillaLight = sk * mix(1.0, 0.72, steep);
                 // water: sun glint (Blinn) on the local vertical, darker diffuse
                 vec3 viewDir = normalize(-vRel);
                 float glint = pow(max(dot(up, normalize(uSun + viewDir)), 0.0), 120.0) * water * step(0.0, dot(up, uSun));
-                vec3 lit = col * (0.12 + 0.88 * diff) + vec3(0.9, 0.85, 0.7) * glint * 0.7;
+                vec3 lit = col * mix(vec3(0.12 + 0.88 * diff), vanillaLight, uVanilla) + vec3(0.9, 0.85, 0.7) * glint * 0.7 * (1.0 - uVanilla);
                 if (uDebug > 0) {                                      // LOD level as a hue ramp: coarse = red ... fine = violet
                     float hue = clamp(uLevel / 22.0, 0.0, 1.0) * 0.8;
                     vec3 lc = clamp(abs(mod(hue * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);

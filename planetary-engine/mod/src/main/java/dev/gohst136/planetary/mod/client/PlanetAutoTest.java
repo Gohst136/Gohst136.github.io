@@ -41,6 +41,11 @@ final class PlanetAutoTest {
     private static boolean finished, stopAfterCapture, landing;
     // smooth-vs-skin comparison at some stops: same pose, block skin on, then off (smooth meshes)
     private static int cmpPhase, cmpFrames; private static long cmpStart; private static String cmpName;
+    /** One line into stats.txt: through the main writer while it is open (appending to the file behind its back would be overwritten), by appending after it is closed. */
+    private static void statLine(String l) {
+        try { log.write(l + "\n"); log.flush(); }
+        catch (IOException | RuntimeException e) { try (FileWriter w = new FileWriter(new File(outDir, "stats.txt"), true)) { w.write(l + "\n"); } catch (IOException ignored) {} }
+    }
     private static boolean spritesDumped;
     private static boolean isCmpStop(int i) { return i == 3 || i == 4 || i == 5; }
     private static int post, postFrames;     // post-transit shots in the real world: planet on / planet off
@@ -470,7 +475,7 @@ final class PlanetAutoTest {
         boolean settled = renderer.settled() || System.nanoTime() - cmpStart > 15_000_000_000L;
         switch (cmpPhase) {
             case 1:
-                if (!spritesDumped) { spritesDumped = true; String d = renderer.skinDump(); System.out.println("[planetary-autotest] " + d); try (FileWriter w3 = new FileWriter(new File(outDir, "stats.txt"), true)) { w3.write(d + "\n"); } catch (IOException ignored) {} }
+                if (!spritesDumped) { spritesDumped = true; String d = renderer.skinDump(); System.out.println("[planetary-autotest] " + d); statLine(d); }
                 GlPlanetRenderer.skinForceOff = true; renderer.clearCache(); cmpPhase = 2; cmpFrames = 0; cmpStart = System.nanoTime(); break;
             case 2: if (++cmpFrames > 40 && settled) { pendingName = cmpName.replace(".png", "_smooth.png"); cmpPhase = 3; } break;
             case 3: GlPlanetRenderer.skinForceOff = false; renderer.clearCache(); cmpPhase = 4; cmpFrames = 0; cmpStart = System.nanoTime(); break;
@@ -497,7 +502,7 @@ final class PlanetAutoTest {
                 sb.append(String.format("[%d,%d,%d | %d,%d,%d | %.2f %.2f %.2f] ", (int) (sa[0] / n), (int) (sa[1] / n), (int) (sa[2] / n), (int) (sbb[0] / n), (int) (sbb[1] / n), (int) (sbb[2] / n), sa[0] / sbb[0], sa[1] / sbb[1], sa[2] / sbb[2]));
             }
             System.out.println("[planetary-autotest] " + sb);
-            try (FileWriter w2 = new FileWriter(new File(outDir, "stats.txt"), true)) { w2.write(sb + "\n"); }
+            statLine(sb.toString());
         } catch (Throwable t) { System.out.println("[planetary-autotest] smooth diff failed: " + t); }
     }
 
@@ -531,12 +536,12 @@ final class PlanetAutoTest {
                   var above = new net.minecraft.core.BlockPos(gx, gy + 1, gz);
                   String d = String.format("LIGHT real chunks at the anchor: sky light above the ground block = %d, block light = %d, packed light colour = %s", mc2.level.getBrightness(net.minecraft.world.level.LightLayer.SKY, above), mc2.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, above), Integer.toHexString(net.minecraft.client.renderer.LevelRenderer.getLightColor(mc2.level, above)));
                   System.out.println("[planetary-autotest] " + d + " | " + GlPlanetRenderer.lightmapDump());
-                  try (FileWriter w3 = new FileWriter(new File(outDir, "stats.txt"), true)) { w3.write(d + " | " + GlPlanetRenderer.lightmapDump() + "\n"); } catch (IOException ignored) {}
+                  statLine(d + " | " + GlPlanetRenderer.lightmapDump());
               } }
             String line = String.format("SKINDIFF real chunks vs block skin, same pose (lower half): mean |diff| R=%.1f G=%.1f B=%.1f (of 255), pixels differing by >16: %.1f%%, >48: %.1f%%, skin brighter by %.1f (luminance)",
                     sr / n, sg / n, sb / n, 100.0 * over16 / n, 100.0 * over48 / n, sl / n);
             System.out.println("[planetary-autotest] " + line);
-            try (FileWriter w2 = new FileWriter(new File(outDir, "stats.txt"), true)) { w2.write(line + "\n"); }
+            statLine(line);
         } catch (Throwable t) {
             System.out.println("[planetary-autotest] skin diff failed: " + t);
         }

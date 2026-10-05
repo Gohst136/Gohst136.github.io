@@ -111,7 +111,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     static volatile int debugMode;
     private int uDebug, uLevel;
     private int program = -1;
-    private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod;
+    private int uProj, uView, uOffset, uMorph, uFarLog, uSun, uCamPos, uOriginMod, uGamma, uVanilla;
     private long residentBytes;
     private volatile long frame;
     private final java.util.concurrent.atomic.AtomicLong jobSeq = new java.util.concurrent.atomic.AtomicLong();
@@ -259,6 +259,11 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
             GlStateManager._glUniform3(uCamPos, v3.put((float) cam[0]).put((float) cam[1]).put((float) cam[2]).flip());
             GlStateManager._glUniform1(uFarLog, st.floats((float) (Math.log(PlanetClient.FAR + 1.0) / Math.log(2.0))));
             GlStateManager._glUniform1i(uDebug, debugMode);
+            GlStateManager._glUniform1(uGamma, st.floats(Minecraft.getInstance().options.gamma().get().floatValue()));
+            {   // near the ground (below ~50 km) terrain is lit like Minecraft's, in space by the sun; blended in between
+                double camR = Math.sqrt(cam[0] * cam[0] + cam[1] * cam[1] + cam[2] * cam[2]) - planet.radius();
+                GlStateManager._glUniform1(uVanilla, st.floats((float) (1.0 - Math.max(0.0, Math.min(1.0, (camR - 5.0e4) / 3.0e5))) * (planet.atmosphereHeight() > 0 ? 1f : 0f)));
+            }
             if (debugMode == 2) GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
             for (var e : toDraw.entrySet()) {
                 Gpu g = resident.get(e.getKey());
@@ -518,6 +523,8 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
         uCamPos = GlStateManager._glGetUniformLocation(program, "uCamPos");
         uOriginMod = GlStateManager._glGetUniformLocation(program, "uOriginMod");
         uDebug = GlStateManager._glGetUniformLocation(program, "uDebug");
+        uGamma = GlStateManager._glGetUniformLocation(program, "uGamma");
+        uVanilla = GlStateManager._glGetUniformLocation(program, "uVanilla");
         uLevel = GlStateManager._glGetUniformLocation(program, "uLevel");
     }
 

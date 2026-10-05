@@ -141,14 +141,28 @@ public final class PlanetClient {
      * The benchmark keeps its fixed noon (comparable shots).
      */
     private static void syncDayTime(Minecraft mc, boolean onMoon) {
-        if ((PlanetAutoTest.enabled() && !forceDaySync) || bubble == null || (++dayTimeFrames & 15) != 0) return;
+        if (bubble == null || (++dayTimeFrames & 15) != 0) return;
         var server = mc.getSingleplayerServer();
         if (server == null) return;
         float[] sE = sunDirE();
         Vec3 sunB = onMoon ? BODIES.dirFromE("moon", simTime, new Vec3(sE[0], sE[1], sE[2])) : new Vec3(sE[0], sE[1], sE[2]);
         double elev = sunB.dot(bubble.ey), east = sunB.dot(bubble.ex);
-        double phi = Math.atan2(elev, east);                               // 0 = rising in the east, pi/2 = noon
-        long t = Math.floorMod(Math.round(phi / (2.0 * Math.PI) * 24000.0), 24000L);
+        long t = dev.gohst136.planetary.render.VanillaDaylight.dayTimeForSunSin(elev, east < 0);     // same sky darkness as the planet's sun (vanilla's day curve is not linear)
+        server.execute(() -> {
+            var level = server.overworld();
+            level.getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_DAYLIGHT).set(false, server);
+            level.setDayTime(t);
+        });
+    }
+
+    /** Free flight near the home planet: the game's clock follows the sun at the point below the camera, so the skin's lightmap and the smooth planet's light agree. */
+    private static void syncDayTimeFree(Minecraft mc, Vec3 posE) {
+        if (!realWorld || (++dayTimeFrames & 15) != 0) return;
+        var server = mc.getSingleplayerServer();
+        if (server == null) return;
+        float[] sE = sunDirE();
+        double elev = posE.normalize().dot(new Vec3(sE[0], sE[1], sE[2]));
+        long t = dev.gohst136.planetary.render.VanillaDaylight.dayTimeForSunSin(elev, true);
         server.execute(() -> {
             var level = server.overworld();
             level.getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_DAYLIGHT).set(false, server);
@@ -525,6 +539,7 @@ public final class PlanetClient {
                 }
             }
             inertialView = inertial;
+            if (pos.length() - PLANET.radius() < 5.0e5) syncDayTimeFree(mc, pos);
             double ground = PLANET.radius() + TERRAIN.heightAt(radial);
             double alt = Math.max(1.0, pos.length() - ground);
             speed = Math.max(5.0, alt * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
