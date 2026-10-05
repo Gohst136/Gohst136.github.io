@@ -126,9 +126,9 @@ final class PlanetShaders {
             }
 
             float ch3(vec3 p) {
-                p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
-                p *= 17.0;
-                return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                p = fract(p * 0.1031);
+                p += dot(p, p.zyx + 31.32);
+                return fract((p.x + p.y) * p.z);
             }
             float vnoise(vec3 x) {
                 vec3 i = floor(x), f = fract(x);
@@ -155,7 +155,7 @@ final class PlanetShaders {
                 float f = cfbm(p, oct);
                 float lat = abs(q.z);                                   // planet z = spin axis
                 float bands = 0.62 + 0.38 * cos(lat * 9.4247);           // wet near the equator and near 60 deg, dry subtropics
-                return smoothstep(0.50, 0.74, f * (0.75 + 0.5 * bands));
+                return smoothstep(0.54, 0.76, f * (0.82 + 0.36 * bands));
             }
 
             float hash3(vec3 p) {
@@ -253,7 +253,7 @@ final class PlanetShaders {
                             float shade = mix(1.0, 0.55, clamp((dens - dens2) * 3.0, 0.0, 1.0));
                             float lit = clamp(sunUp * 1.1 + 0.18, 0.0, 1.0);
                             float edge = pow(1.0 - clamp(abs(mu), 0.0, 1.0), 2.0);           // limb: thicker slab seen at a grazing angle
-                            cA = clamp(dens * (0.82 + 0.25 * edge), 0.0, 0.96);
+                            cA = clamp(dens * (0.75 + 0.2 * edge), 0.0, 0.92);
                             // the sun's light reaching the cloud is reddened near the terminator (path through air), tinted by the atmosphere's own colour
                             vec3 sunCol = mix(vec3(1.0, 0.55, 0.30), vec3(1.0, 0.98, 0.94), smoothstep(-0.05, 0.35, sunUp));
                             cC = sunCol * (0.06 + 0.94 * lit) * shade;
