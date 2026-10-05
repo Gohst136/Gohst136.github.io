@@ -53,6 +53,10 @@ public final class BlockSkinBuilder {
         }
     }
 
+    private static boolean sameAo(byte[] ao, int a, int b) {
+        return ao[a * 4] == ao[b * 4] && ao[a * 4 + 1] == ao[b * 4 + 1] && ao[a * 4 + 2] == ao[b * 4 + 2] && ao[a * 4 + 3] == ao[b * 4 + 3];
+    }
+
     /** Packs a brightness multiplier and an RGB tint into 0xAARRGGBB. */
     static int color(float shade, int rgb) {
         int r = Math.min(255, Math.round(shade * ((rgb >> 16) & 255))), g = Math.min(255, Math.round(shade * ((rgb >> 8) & 255))), b = Math.min(255, Math.round(shade * (rgb & 255)));
@@ -97,6 +101,21 @@ public final class BlockSkinBuilder {
             tintW[i] = wet ? style.tintWater(c) : 0;
         }
 
+        // vanilla ambient occlusion of the top faces: each vertex counts the occluding blocks among its two side neighbours and its corner neighbour (a neighbour column
+        // that is higher than this one stands in the air block above the face); both sides blocked count the corner too. brightness = 1 - 0.2 * count, exactly the
+        // average vanilla takes over (air block 1.0, three neighbours 1.0 or 0.2). Corners in vanilla's UP vertex order: (-x,-z) (-x,+z) (+x,+z) (+x,-z).
+        final int[][] corners = {{-1, -1}, {-1, 1}, {1, 1}, {1, -1}};
+        byte[] ao = new byte[nn * 4];
+        for (int cz = 0; cz < n; cz++) for (int cx = 0; cx < n; cx++) {
+            int i = cz * n + cx, top0 = ground[i];
+            for (int v = 0; v < 4; v++) {
+                int sx = corners[v][0], sz = corners[v][1];
+                boolean s1 = col[(cz + 1) * w + (cx + 1 + sx)].groundY() > top0, s2 = col[(cz + 1 + sz) * w + (cx + 1)].groundY() > top0;
+                boolean cn = col[(cz + 1 + sz) * w + (cx + 1 + sx)].groundY() > top0;
+                ao[i * 4 + v] = (byte) ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
+            }
+        }
+
         // top faces and water surfaces: runs along x of identical cells become one quad (the sprite is tiled per block, so a long quad looks like many)
         for (int cz = 0; cz < n; cz++) {
             int cx = 0;
@@ -105,14 +124,16 @@ public final class BlockSkinBuilder {
                 while (cx + run < n) {
                     int i = cz * n + cx + run;
                     if (ground[i] != ground[i0] || topKind[i] != topKind[i0] || tintTop[i] != tintTop[i0] || sky[i] != sky[i0]) break;
+                    if (!sameAo(ao, i0, i) || ao[i0 * 4] != ao[i0 * 4 + 3] || ao[i0 * 4 + 1] != ao[i0 * 4 + 2]) break;      // a merged quad interpolates AO along x: only valid where AO is constant along x
                     run++;
                 }
                 double px0 = x0 + cx * cell, px1 = x0 + (cx + run) * cell, pz0 = z0 + cz * cell, pz1 = pz0 + cell, len = run * cell;
                 double yTop = ground[i0] + 1.0;
                 corner(p, 0, px0, pz0, yTop, R, origin); corner(p, 1, px0, pz1, yTop, R, origin); corner(p, 2, px1, pz1, yTop, R, origin); corner(p, 3, px1, pz0, yTop, R, origin);
                 uv[0] = 0; uv[1] = 0; uv[2] = 0; uv[3] = cell; uv[4] = len; uv[5] = cell; uv[6] = len; uv[7] = 0;
-                int tc = color(SHADE_UP, tintTop[i0]);
-                opaque.add(p, uv, tc, tc, tc, tc, style.slotTop(topKind[i0]), sky[i0]);
+                int lastCell = cz * n + cx + run - 1;
+                opaque.add(p, uv, color(SHADE_UP * (1f - 0.2f * ao[i0 * 4]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[i0 * 4 + 1]), tintTop[i0]),
+                        color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 2]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 3]), tintTop[i0]), style.slotTop(topKind[i0]), sky[i0]);
                 cx += run;
             }
             cx = 0;
