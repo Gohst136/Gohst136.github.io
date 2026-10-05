@@ -39,6 +39,10 @@ final class PlanetAutoTest {
     private static FileWriter log;
     private static String pendingName;
     private static boolean finished, stopAfterCapture, landing;
+    // smooth-vs-skin comparison at some stops: same pose, block skin on, then off (smooth meshes)
+    private static int cmpPhase, cmpFrames; private static long cmpStart; private static String cmpName;
+    private static boolean spritesDumped;
+    private static boolean isCmpStop(int i) { return i == 3 || i == 4 || i == 5; }
     private static int post, postFrames;     // post-transit shots in the real world: planet on / planet off
     private static long chunkWaitStart;
     // watchdog: if the benchmark stops making progress, dump every thread's stack to hang.txt and exit, so results always arrive
@@ -435,6 +439,7 @@ final class PlanetAutoTest {
             return;
         }
         if (stop >= STOPS.length) return;
+        if (compareStep(renderer)) return;
         frames++;
         if (hold == 0) return;
         if (hold == 1) holdStartNanos = System.nanoTime();
@@ -449,8 +454,51 @@ final class PlanetAutoTest {
         line += "\n   " + PlanetClient.bubbleDiag();
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
+        if (renderer.skinActive() && isCmpStop(stop)) { cmpName = pendingName; cmpPhase = 1; return; }          // before moving on: the same pose again with the smooth planet
+        advanceStop();
+    }
+
+    private static void advanceStop() {
         stop++; hold = 0; stage("stop " + stop);
         if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; PlanetClient.leaveBubble(); PlanetClient.handoffEnabled = false; }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
+    }
+
+    /** Runs the skin-off / skin-on cycle of a comparison stop. Returns true while it is busy. */
+    private static boolean compareStep(GlPlanetRenderer renderer) {
+        if (cmpPhase == 0) return false;
+        if (pendingName != null) return true;
+        boolean settled = renderer.settled() || System.nanoTime() - cmpStart > 15_000_000_000L;
+        switch (cmpPhase) {
+            case 1:
+                if (!spritesDumped) { spritesDumped = true; String d = renderer.skinDump(); System.out.println("[planetary-autotest] " + d); try (FileWriter w3 = new FileWriter(new File(outDir, "stats.txt"), true)) { w3.write(d + "\n"); } catch (IOException ignored) {} }
+                GlPlanetRenderer.skinForceOff = true; renderer.clearCache(); cmpPhase = 2; cmpFrames = 0; cmpStart = System.nanoTime(); break;
+            case 2: if (++cmpFrames > 40 && settled) { pendingName = cmpName.replace(".png", "_smooth.png"); cmpPhase = 3; } break;
+            case 3: GlPlanetRenderer.skinForceOff = false; renderer.clearCache(); cmpPhase = 4; cmpFrames = 0; cmpStart = System.nanoTime(); break;
+            case 4: if (++cmpFrames > 40 && settled) { cmpPhase = 0; smoothDiff(cmpName); advanceStop(); } break;
+            default: cmpPhase = 0;
+        }
+        return true;
+    }
+
+    /** Colour comparison of the same pose drawn with the block skin and with the smooth planet (lower part of the image, below the text overlay). */
+    private static void smoothDiff(String skinShot) {
+        try {
+            File shots = new File(outDir, "screenshots");
+            java.awt.image.BufferedImage a = javax.imageio.ImageIO.read(new File(shots, skinShot)), b = javax.imageio.ImageIO.read(new File(shots, skinShot.replace(".png", "_smooth.png")));
+            int w = Math.min(a.getWidth(), b.getWidth()), h = Math.min(a.getHeight(), b.getHeight());
+            StringBuilder sb = new StringBuilder("SMOOTHDIFF " + skinShot + " (skin RGB | smooth RGB | skin/smooth), lower 45% by thirds: ");
+            for (int part = 0; part < 3; part++) {
+                double[] sa = new double[3], sbb = new double[3]; long n = 0;
+                for (int y = (int) (h * 0.55); y < h; y++) for (int x = part * w / 3; x < (part + 1) * w / 3; x++) {
+                    int p = a.getRGB(x, y), q = b.getRGB(x, y);
+                    for (int c = 0; c < 3; c++) { sa[c] += (p >> (16 - 8 * c)) & 255; sbb[c] += (q >> (16 - 8 * c)) & 255; }
+                    n++;
+                }
+                sb.append(String.format("[%d,%d,%d | %d,%d,%d | %.2f %.2f %.2f] ", (int) (sa[0] / n), (int) (sa[1] / n), (int) (sa[2] / n), (int) (sbb[0] / n), (int) (sbb[1] / n), (int) (sbb[2] / n), sa[0] / sbb[0], sa[1] / sbb[1], sa[2] / sbb[2]));
+            }
+            System.out.println("[planetary-autotest] " + sb);
+            try (FileWriter w2 = new FileWriter(new File(outDir, "stats.txt"), true)) { w2.write(sb + "\n"); }
+        } catch (Throwable t) { System.out.println("[planetary-autotest] smooth diff failed: " + t); }
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }

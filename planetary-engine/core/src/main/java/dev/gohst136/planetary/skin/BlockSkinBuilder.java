@@ -23,6 +23,8 @@ public final class BlockSkinBuilder {
     public static final int FINEST_LEVEL = 18;
     /** Vanilla face brightness: up 1.0, north/south 0.8, east/west 0.6 (down 0.5 is never visible from outside). */
     static final float SHADE_UP = 1.0f, SHADE_NS = 0.8f, SHADE_EW = 0.6f;
+    /** Coarse walls: the exact 1-block walls average 0.44 brightness (shade x AO of the bottom rows), plain shade would give 0.56 (measured by SkinAoStatsTest). */
+    static final float COARSE_WALL_AO = 0.78f;
     static final double WATER_SURFACE = 0.89;           // a water source block's surface sits 8/9 up
 
     private final PlanetDefinition planet;
@@ -106,13 +108,27 @@ public final class BlockSkinBuilder {
         // average vanilla takes over (air block 1.0, three neighbours 1.0 or 0.2). Corners in vanilla's UP vertex order: (-x,-z) (-x,+z) (+x,+z) (+x,-z).
         final int[][] corners = {{-1, -1}, {-1, 1}, {1, 1}, {1, -1}};
         byte[] ao = new byte[nn * 4];
+        float[] aoFactor = new float[nn];                                   // coarse cells: one uniform brightness per cell (statistical AO, see below)
         for (int cz = 0; cz < n; cz++) for (int cx = 0; cx < n; cx++) {
             int i = cz * n + cx, top0 = ground[i];
-            for (int v = 0; v < 4; v++) {
+            if (cell == 1.0) {
+                for (int v = 0; v < 4; v++) {
+                    int sx = corners[v][0], sz = corners[v][1];
+                    boolean s1 = col[(cz + 1) * w + (cx + 1 + sx)].groundY() > top0, s2 = col[(cz + 1 + sz) * w + (cx + 1)].groundY() > top0;
+                    boolean cn = col[(cz + 1 + sz) * w + (cx + 1 + sx)].groundY() > top0;
+                    ao[i * 4 + v] = (byte) ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
+                }
+            } else {
+                // A coarse cell stands for cell x cell real blocks whose ambient occlusion we cannot see individually. Taking AO from the cell grid itself would be far too
+                // dark (neighbouring cells always differ by whole blocks). Instead one vertex of one real block (the cell centre) is evaluated on the real 1-block terrain:
+                // an unbiased sample of the AO a real chunk would show there, so the average brightness of a region matches.
+                double mx = x0 + (cx + 0.5) * cell, mz = z0 + (cz + 0.5) * cell;
+                int v = (cx * 7 + cz * 13 + (int) (x0 + z0)) & 3;                      // which vertex: pseudo-random but deterministic
                 int sx = corners[v][0], sz = corners[v][1];
-                boolean s1 = col[(cz + 1) * w + (cx + 1 + sx)].groundY() > top0, s2 = col[(cz + 1 + sz) * w + (cx + 1)].groundY() > top0;
-                boolean cn = col[(cz + 1 + sz) * w + (cx + 1 + sx)].groundY() > top0;
-                ao[i * 4 + v] = (byte) ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
+                int g0 = PlanetColumns.earth(terrain, half, mx, mz, 1.0).groundY();
+                boolean s1 = PlanetColumns.earth(terrain, half, mx + sx, mz, 1.0).groundY() > g0, s2 = PlanetColumns.earth(terrain, half, mx, mz + sz, 1.0).groundY() > g0;
+                boolean cn = PlanetColumns.earth(terrain, half, mx + sx, mz + sz, 1.0).groundY() > g0;
+                aoFactor[i] = 1f - 0.2f * ((s1 ? 1 : 0) + (s2 ? 1 : 0) + ((s1 && s2) || cn ? 1 : 0));
             }
         }
 
@@ -124,7 +140,8 @@ public final class BlockSkinBuilder {
                 while (cx + run < n) {
                     int i = cz * n + cx + run;
                     if (ground[i] != ground[i0] || topKind[i] != topKind[i0] || tintTop[i] != tintTop[i0] || sky[i] != sky[i0]) break;
-                    if (!sameAo(ao, i0, i) || ao[i0 * 4] != ao[i0 * 4 + 3] || ao[i0 * 4 + 1] != ao[i0 * 4 + 2]) break;      // a merged quad interpolates AO along x: only valid where AO is constant along x
+                    if (cell == 1.0) { if (!sameAo(ao, i0, i) || ao[i0 * 4] != ao[i0 * 4 + 3] || ao[i0 * 4 + 1] != ao[i0 * 4 + 2]) break; }      // a merged quad interpolates AO along x: only valid where AO is constant along x
+                    else if (aoFactor[i] != aoFactor[i0]) break;
                     run++;
                 }
                 double px0 = x0 + cx * cell, px1 = x0 + (cx + run) * cell, pz0 = z0 + cz * cell, pz1 = pz0 + cell, len = run * cell;
@@ -132,8 +149,13 @@ public final class BlockSkinBuilder {
                 corner(p, 0, px0, pz0, yTop, R, origin); corner(p, 1, px0, pz1, yTop, R, origin); corner(p, 2, px1, pz1, yTop, R, origin); corner(p, 3, px1, pz0, yTop, R, origin);
                 uv[0] = 0; uv[1] = 0; uv[2] = 0; uv[3] = cell; uv[4] = len; uv[5] = cell; uv[6] = len; uv[7] = 0;
                 int lastCell = cz * n + cx + run - 1;
-                opaque.add(p, uv, color(SHADE_UP * (1f - 0.2f * ao[i0 * 4]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[i0 * 4 + 1]), tintTop[i0]),
-                        color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 2]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 3]), tintTop[i0]), style.slotTop(topKind[i0]), sky[i0]);
+                if (cell == 1.0)
+                    opaque.add(p, uv, color(SHADE_UP * (1f - 0.2f * ao[i0 * 4]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[i0 * 4 + 1]), tintTop[i0]),
+                            color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 2]), tintTop[i0]), color(SHADE_UP * (1f - 0.2f * ao[lastCell * 4 + 3]), tintTop[i0]), style.slotTop(topKind[i0]), sky[i0]);
+                else {
+                    int tc = color(SHADE_UP * aoFactor[i0], tintTop[i0]);
+                    opaque.add(p, uv, tc, tc, tc, tc, style.slotTop(topKind[i0]), sky[i0]);
+                }
                 cx += run;
             }
             cx = 0;
@@ -312,10 +334,10 @@ public final class BlockSkinBuilder {
             Kind kind = s == 0 ? c.top() : (s == 1 ? c.filler() : Kind.STONE);
             corner(p, 0, ax, az, yHi, R, origin); corner(p, 1, ax, az, yLo, R, origin); corner(p, 2, bx, bz, yLo, R, origin); corner(p, 3, bx, bz, yHi, R, origin);
             uv[0] = 0; uv[1] = -yHi; uv[2] = 0; uv[3] = -yLo; uv[4] = len; uv[5] = -yLo; uv[6] = len; uv[7] = -yHi;      // texture v grows downward
-            int sc = color(shade, 0xFFFFFF);
+            int sc = color(shade * COARSE_WALL_AO, 0xFFFFFF);
             out.add(p, uv, sc, sc, sc, sc, style.slotSide(kind), 15);
             if (s == 0 && style.slotSideOverlay(kind) >= 0) {
-                int oc = color(shade, style.tintOverlay(c));
+                int oc = color(shade * COARSE_WALL_AO, style.tintOverlay(c));
                 out.add(p, uv, oc, oc, oc, oc, style.slotSideOverlay(kind), 15);
             }
         }

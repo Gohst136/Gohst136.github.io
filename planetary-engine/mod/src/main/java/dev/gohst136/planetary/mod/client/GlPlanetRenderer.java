@@ -83,8 +83,12 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private long skinQuadsResident, skinPatchesBuilt;
 
     /** Turns the block skin on for this renderer (home planet only); the builder itself is created on the first frame, when the game's models exist. */
+    /** Benchmark: build smooth meshes instead of block meshes (to compare the two looks at the same pose). */
+    static volatile boolean skinForceOff;
+
     void enableSkin(RealisticTerrain terrain) { if (SKIN_ALLOWED) this.skinTerrain = terrain; }
     boolean skinActive() { return skinBuilder != null; }
+    String skinDump() { return skinStyle == null ? "no skin" : skinStyle.dump(); }
 
     private final PatchMeshBuilder builder;
     private final PlanetDefinition planet;
@@ -579,7 +583,7 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
                     if (frame - wanted.getOrDefault(k, 0L) > STALE_FRAMES) { inFlight.remove(k); requestedAt.remove(k); return; }
                     if (finished.size() > 600) { inFlight.remove(k); requestedAt.remove(k); return; }          // uploads are behind: do not build what cannot be uploaded; it is re-requested if still needed
                     BlockSkinBuilder sb = skinBuilder;
-                    if (sb != null && k.level() >= SKIN_FROM_LEVEL && k.level() <= BlockSkinBuilder.FINEST_LEVEL) finished.add(new Built(k, null, sb.build(k)));
+                    if (sb != null && !skinForceOff && k.level() >= SKIN_FROM_LEVEL && k.level() <= BlockSkinBuilder.FINEST_LEVEL) finished.add(new Built(k, null, sb.build(k)));
                     else finished.add(new Built(k, builder.build(k, GRID), null));
                     meshesBuilt.incrementAndGet();
                 } catch (Throwable t) { inFlight.remove(k); requestedAt.remove(k); }

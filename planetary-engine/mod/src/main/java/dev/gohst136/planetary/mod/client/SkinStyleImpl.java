@@ -59,6 +59,33 @@ final class SkinStyleImpl implements SkinStyle {
         rects[slot * 4] = sp.getU0() + du; rects[slot * 4 + 1] = sp.getV0() + dv; rects[slot * 4 + 2] = sp.getU1() - du; rects[slot * 4 + 3] = sp.getV1() - dv;
     }
 
+    /** Diagnostics: average colour of each top sprite and the grass / water colours of a few biomes (to calibrate the smooth planet's palette). */
+    String dump() {
+        StringBuilder sb = new StringBuilder("SPRITES (top face average RGB 0..255): ");
+        Minecraft mc = Minecraft.getInstance();
+        RandomSource rnd = RandomSource.create(42L);
+        for (Kind k : Kind.values()) {
+            if (k == Kind.WATER) continue;
+            BlockState st = PlanetChunkGenerator.state(k);
+            List<BakedQuad> up = mc.getBlockRenderer().getBlockModel(st).getQuads(st, Direction.UP, rnd, ModelData.EMPTY, null);
+            if (up.isEmpty()) continue;
+            var img = up.get(0).getSprite().contents().getOriginalImage();
+            long r = 0, g = 0, b = 0; int n = 0;
+            for (int y = 0; y < img.getHeight(); y++) for (int x = 0; x < img.getWidth(); x++) {
+                int abgr = img.getPixelRGBA(x, y);
+                r += abgr & 255; g += (abgr >> 8) & 255; b += (abgr >> 16) & 255; n++;
+            }
+            sb.append(String.format("%s=(%d,%d,%d) ", k.name(), r / n, g / n, b / n));
+        }
+        sb.append("| biome grass/water: ");
+        for (ResourceKey<Biome> bk : List.of(Biomes.PLAINS, Biomes.FOREST, Biomes.DESERT, Biomes.SAVANNA, Biomes.TAIGA, Biomes.SNOWY_PLAINS, Biomes.JUNGLE, Biomes.OCEAN, Biomes.WARM_OCEAN, Biomes.COLD_OCEAN, Biomes.RIVER)) {
+            Biome b = biomes.get(bk);
+            if (b == null) continue;
+            sb.append(String.format("%s=%06x/%06x ", bk.location().getPath(), b.getGrassColor(0, 0) & 0xFFFFFF, b.getWaterColor() & 0xFFFFFF));
+        }
+        return sb.toString();
+    }
+
     @Override public int slotTop(Kind k) { return k.ordinal() * 3; }
     @Override public int slotSide(Kind k) { return k.ordinal() * 3 + 1; }
     @Override public int slotSideOverlay(Kind k) { return k == Kind.GRASS_BLOCK ? k.ordinal() * 3 + 2 : -1; }
