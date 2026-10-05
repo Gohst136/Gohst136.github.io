@@ -317,9 +317,9 @@ final class GlPlanetRenderer implements RenderBackend, AutoCloseable {
     private void drainUploads() {
         // 6 per frame normally; a backlog (teleport, lap) gets up to 40 per frame but never more than ~3 ms of upload work
         int budget = finished.size() > 64 ? 40 : MAX_UPLOADS_PER_FRAME;
-        long t0 = System.nanoTime();
+        long uploadStart = System.nanoTime();
         for (int i = 0; i < budget; i++) {
-            if (i >= MAX_UPLOADS_PER_FRAME && System.nanoTime() - t0 > 3_000_000L) return;
+            if (i >= MAX_UPLOADS_PER_FRAME && System.nanoTime() - uploadStart > 3_000_000L) return;
             Built b = finished.poll();
             if (b == null) return;
             inFlight.remove(b.key());
