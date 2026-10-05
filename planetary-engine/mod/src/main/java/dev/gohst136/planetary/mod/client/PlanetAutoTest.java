@@ -277,7 +277,7 @@ final class PlanetAutoTest {
             var in = PlanetClient.BODIES.instance("moon");
             Vec3 dirB = moonDir();
             boolean waiting = PlanetClient.realWorld && moonAlt < 420 && !PlanetClient.bubbleLive && moonChunkWait != 0 && System.nanoTime() - moonChunkWait < 60_000_000_000L;
-            if (moonHold == 0 && !waiting) {
+            if (moonHold == 0 && !waiting && !moonFinish && moonStop < MOON_STOPS.length) {
                 moonAlt = Math.max(MOON_STOPS[MOON_STOPS.length - 1], moonAlt - Math.min(moonAlt / 2.0, 1e18) / 30.0);
                 if (moonAlt <= MOON_STOPS[moonStop] * 1.0001) { moonAlt = MOON_STOPS[moonStop]; moonHold = 1; moonHoldStart = System.nanoTime(); }
             }
