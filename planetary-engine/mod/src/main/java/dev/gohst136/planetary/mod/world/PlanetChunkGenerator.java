@@ -8,6 +8,7 @@ import dev.gohst136.planetary.planet.BodyPlane;
 import dev.gohst136.planetary.planet.PlaneUnwrap;
 import dev.gohst136.planetary.planet.VerticalMap;
 import dev.gohst136.planetary.terrain.RealisticTerrain;
+import dev.gohst136.planetary.world.PlanetColumns;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.WorldGenRegion;
@@ -68,28 +69,34 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
 
     @Override protected MapCodec<? extends ChunkGenerator> codec() { return CODEC; }
 
-    /** One resolved block column. */
-    private record Column(int groundY, int waterTopY, boolean river, boolean ocean, RealisticTerrain.Surface s) {}
-
-    /** Moon column: airless, no water, craters; heights through the airless vertical map. */
-    private Column moonColumn(int x, int z) {
-        double[] o = new double[5];
-        Vec3 d = PlaneUnwrap.inverse(x + 0.5 - BodyPlane.offsetX(BodyPlane.MOON), z + 0.5, PlanetWorld.moonHalfSpan(seed));
-        PlanetWorld.moonTerrain(seed).sampleSurface(d, 1.0, o);
-        int ground = (int) Math.floor(VerticalMap.toBlockYAirless(o[0]));
-        var s = new RealisticTerrain.Surface(o[0], -150.0, 0.0, 0.0, 1.0, o[1], o[2], o[3], false);   // albedo in the colour slots: picks the regolith block
-        return new Column(ground, Integer.MIN_VALUE, false, false, s);
+    private PlanetColumns.Column column(int x, int z) {
+        if (BodyPlane.bodyAt(x) == BodyPlane.MOON) {
+            double[] o = new double[5];
+            Vec3 d = PlaneUnwrap.inverse(x + 0.5 - BodyPlane.offsetX(BodyPlane.MOON), z + 0.5, PlanetWorld.moonHalfSpan(seed));
+            PlanetWorld.moonTerrain(seed).sampleSurface(d, 1.0, o);
+            return PlanetColumns.moon(o[0], o[2], o[1], o[2], o[3]);            // albedo in the colour slots: picks the regolith block
+        }
+        return PlanetColumns.earth(terrain, half, x + 0.5, z + 0.5, 1.0);
     }
 
-    private Column column(int x, int z) {
-        if (BodyPlane.bodyAt(x) == BodyPlane.MOON) return moonColumn(x, z);
-        Vec3 d = PlaneUnwrap.inverse(x + 0.5, z + 0.5, half);
-        RealisticTerrain.Surface s = terrain.surface(d, 1.0);
-        int ground = (int) Math.floor(VerticalMap.toBlockY(s.height()));
-        boolean ocean = s.height() < 0.0;
-        boolean river = !ocean && s.river() > 0.7;
-        int water = ocean ? Math.max(ground, VerticalMap.SEA_LEVEL) : (river ? ground + 1 : Integer.MIN_VALUE);
-        return new Column(ground, water, river, ocean, s);
+    /** The one place where planet block kinds become vanilla blocks. */
+    static BlockState state(PlanetColumns.Kind k) {
+        switch (k) {
+            case GRASS_BLOCK: return Blocks.GRASS_BLOCK.defaultBlockState();
+            case DIRT: return Blocks.DIRT.defaultBlockState();
+            case STONE: return Blocks.STONE.defaultBlockState();
+            case SAND: return Blocks.SAND.defaultBlockState();
+            case SANDSTONE: return Blocks.SANDSTONE.defaultBlockState();
+            case GRAVEL: return Blocks.GRAVEL.defaultBlockState();
+            case CLAY: return Blocks.CLAY.defaultBlockState();
+            case SNOW_BLOCK: return Blocks.SNOW_BLOCK.defaultBlockState();
+            case ICE: return Blocks.ICE.defaultBlockState();
+            case WATER: return Blocks.WATER.defaultBlockState();
+            case BEDROCK: return Blocks.BEDROCK.defaultBlockState();
+            case ANDESITE: return Blocks.ANDESITE.defaultBlockState();
+            case TUFF: return Blocks.TUFF.defaultBlockState();
+            default: return Blocks.BLACKSTONE.defaultBlockState();
+        }
     }
 
     @Override
@@ -103,9 +110,9 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
         BlockState stone = Blocks.STONE.defaultBlockState(), water = Blocks.WATER.defaultBlockState();
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
-                Column c = column(minX + lx, minZ + lz);
+                PlanetColumns.Column c = column(minX + lx, minZ + lz);
                 int top = Math.max(minY + 1, Math.min(maxY, c.groundY()));
-                BlockState topBlock = surfaceBlock(c), filler = fillerBlock(c);
+                BlockState topBlock = state(c.top()), filler = state(c.filler());
                 for (int y = minY; y <= top; y++) {
                     BlockState st = y == minY ? Blocks.BEDROCK.defaultBlockState() : (y == top ? topBlock : (y >= top - 3 ? filler : stone));
                     setBlock(chunk, lx, y, lz, st);
@@ -114,7 +121,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
                 surface.update(lx, top, lz, topBlock);
                 if (c.waterTopY() > top) {
                     int wt = Math.min(maxY, c.waterTopY());
-                    for (int y = top + 1; y <= wt; y++) setBlock(chunk, lx, y, lz, (c.ocean() && y == wt && c.s().temperature() < -8) ? Blocks.ICE.defaultBlockState() : water);
+                    for (int y = top + 1; y <= wt; y++) setBlock(chunk, lx, y, lz, (c.ocean() && y == wt && c.frozenWater()) ? Blocks.ICE.defaultBlockState() : water);
                     surface.update(lx, wt, lz, water);
                 }
             }
@@ -128,39 +135,11 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
         sec.setBlockState(lx, y & 15, lz, st, false);
     }
 
-    private static boolean isMoon(Column c) { return c.s().temperature() == -150.0 && c.s().continental() == 1.0; }
-
-    private static BlockState surfaceBlock(Column c) {
-        var s = c.s();
-        if (isMoon(c)) {
-            double albedo = s.g();
-            return albedo > 0.45 ? Blocks.ANDESITE.defaultBlockState() : (albedo > 0.33 ? Blocks.TUFF.defaultBlockState() : Blocks.BLACKSTONE.defaultBlockState());
-        }
-        double h = s.height(), t = s.temperature(), m = s.moisture();
-        if (c.ocean()) {
-            if (h > -6) return Blocks.SAND.defaultBlockState();
-            return h > -60 ? Blocks.SAND.defaultBlockState() : (m > 0.5 ? Blocks.CLAY.defaultBlockState() : Blocks.GRAVEL.defaultBlockState());
-        }
-        if (c.river()) return Blocks.GRAVEL.defaultBlockState();
-        if (h > 3400.0 || t < -12.0) return Blocks.SNOW_BLOCK.defaultBlockState();
-        if (h > 2200.0) return Blocks.STONE.defaultBlockState();
-        if (h < 4.0 && s.continental() < 0.045) return Blocks.SAND.defaultBlockState();
-        if (t > 14.0 && m < 0.2) return Blocks.SAND.defaultBlockState();
-        return Blocks.GRASS_BLOCK.defaultBlockState();
-    }
-
-    private static BlockState fillerBlock(Column c) {
-        BlockState top = surfaceBlock(c);
-        if (top.is(Blocks.ANDESITE) || top.is(Blocks.TUFF) || top.is(Blocks.BLACKSTONE)) return Blocks.STONE.defaultBlockState();
-        if (top.is(Blocks.SAND)) return Blocks.SANDSTONE.defaultBlockState();
-        if (top.is(Blocks.STONE) || top.is(Blocks.SNOW_BLOCK)) return Blocks.STONE.defaultBlockState();
-        if (top.is(Blocks.GRAVEL) || top.is(Blocks.CLAY)) return Blocks.GRAVEL.defaultBlockState();
-        return Blocks.DIRT.defaultBlockState();
-    }
-
+    
+    
     @Override
     public int getBaseHeight(int x, int z, Heightmap.Types type, LevelHeightAccessor level, RandomState random) {
-        Column c = column(x, z);
+        PlanetColumns.Column c = column(x, z);
         int ground = Math.max(level.getMinBuildHeight() + 1, Math.min(level.getMaxBuildHeight() - 1, c.groundY()));
         boolean wantsWater = type == Heightmap.Types.WORLD_SURFACE || type == Heightmap.Types.WORLD_SURFACE_WG
                 || type == Heightmap.Types.MOTION_BLOCKING || type == Heightmap.Types.MOTION_BLOCKING_NO_LEAVES;
@@ -169,7 +148,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
 
     @Override
     public NoiseColumn getBaseColumn(int x, int z, LevelHeightAccessor level, RandomState random) {
-        Column c = column(x, z);
+        PlanetColumns.Column c = column(x, z);
         int min = level.getMinBuildHeight(), n = level.getHeight();
         BlockState[] states = new BlockState[n];
         for (int i = 0; i < n; i++) {
