@@ -289,7 +289,7 @@ final class PlanetAutoTest {
         System.out.println("[planetary-autotest] " + line);
         try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
         stop++; hold = 0; stage("stop " + stop);
-        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
+        if (stop >= STOPS.length) { orbit = true; orbitIdx = 0; orbitHold = -10; PlanetClient.leaveBubble(); }   // start the orbit tour a few frames later so the last stop's screenshot is not overwritten
     }
 
     private static double lastFrameMs(FrameStats fs) { return fs.last(); }

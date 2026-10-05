@@ -250,6 +250,11 @@ public final class PlanetClient {
         return sb.toString();
     }
 
+    /** Leaves the real-world bubble: the free-flight camera takes over again (used by the benchmark to start the orbit tour). */
+    static void leaveBubble() {
+        bubbleLive = false; pendingTp = null; preloaded = false; bubble = null;
+    }
+
     /** Moves the real (server-side) player; used for the handoff and by the benchmark. */
     static void teleportReal(double x, double y, double z, float yaw, float pitch) {
         var server = Minecraft.getInstance().getSingleplayerServer();
