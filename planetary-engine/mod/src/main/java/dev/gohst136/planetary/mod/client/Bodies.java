@@ -7,7 +7,6 @@ import dev.gohst136.planetary.mesh.PatchMeshBuilder;
 import dev.gohst136.planetary.planet.PlanetDefinition;
 import dev.gohst136.planetary.system.BodyDefinition;
 import dev.gohst136.planetary.system.StarSystem;
-import dev.gohst136.planetary.terrain.CraterTerrain;
 import dev.gohst136.planetary.terrain.TerrainSampler;
 import org.joml.Matrix4f;
 
@@ -48,10 +47,8 @@ final class Bodies {
         this.sys = sys; this.home = home;
         for (BodyDefinition d : sys.bodies()) {
             if (d.id().equals(home) || d.kind() == BodyDefinition.Kind.STAR) continue;
-            PlanetDefinition pd = new PlanetDefinition("planetary:" + d.id(), d.seed(), d.radius(), d.surfaceGravity(), 0,
-                    Math.min(9000.0, 0.005 * d.radius() + 500), Math.min(9000.0, 0.004 * d.radius() + 500), d.rotationPeriod(), 0, 14);
-            boolean rusty = d.kind() == BodyDefinition.Kind.PLANET;
-            TerrainSampler ts = rusty ? new CraterTerrain(pd, 1.35, 0.85, 0.6) : new CraterTerrain(pd);
+            PlanetDefinition pd = dev.gohst136.planetary.system.BodyTerrain.planetFor(d);
+            TerrainSampler ts = dev.gohst136.planetary.system.BodyTerrain.terrainFor(d, pd);
             instances.add(new Instance(d, pd, ts));
         }
     }

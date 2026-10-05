@@ -37,7 +37,7 @@ public final class PlanetBiomeSource extends BiomeSource {
         this.terrain = PlanetWorld.terrain(seed);
         this.half = PlanetWorld.halfSpan(seed);
         for (ResourceKey<Biome> k : java.util.List.of(
-                Biomes.PLAINS, Biomes.SNOWY_PLAINS, Biomes.DESERT, Biomes.FOREST, Biomes.DARK_FOREST, Biomes.BIRCH_FOREST,
+                Biomes.THE_VOID, Biomes.PLAINS, Biomes.SNOWY_PLAINS, Biomes.DESERT, Biomes.FOREST, Biomes.DARK_FOREST, Biomes.BIRCH_FOREST,
                 Biomes.TAIGA, Biomes.SNOWY_TAIGA, Biomes.SAVANNA, Biomes.JUNGLE, Biomes.SPARSE_JUNGLE, Biomes.WINDSWEPT_HILLS,
                 Biomes.WINDSWEPT_FOREST, Biomes.SAVANNA_PLATEAU, Biomes.SNOWY_SLOPES, Biomes.FROZEN_PEAKS, Biomes.STONY_PEAKS, Biomes.RIVER,
                 Biomes.FROZEN_RIVER, Biomes.BEACH, Biomes.SNOWY_BEACH, Biomes.OCEAN, Biomes.DEEP_OCEAN, Biomes.COLD_OCEAN,
@@ -63,6 +63,7 @@ public final class PlanetBiomeSource extends BiomeSource {
 
     @Override
     public Holder<Biome> getNoiseBiome(int qx, int qy, int qz, Climate.Sampler sampler) {
+        if (qx * 4 > 16_800_000) return biomes.get(Biomes.THE_VOID);              // the Moon: no atmosphere, no vegetation, no mobs
         long key = ((long) qx << 32) ^ (qz & 0xffffffffL);
         ColumnCache c = cache.get();
         ResourceKey<Biome> k = c.get(key);

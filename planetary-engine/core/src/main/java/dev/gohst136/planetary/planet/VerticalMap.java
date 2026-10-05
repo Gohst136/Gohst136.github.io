@@ -22,4 +22,13 @@ public final class VerticalMap {
         double t = Math.min(0.999999, (blockY - LINEAR_TOP) / EXTRA);
         return LINEAR_TOP + SCALE * 0.5 * Math.log((1 + t) / (1 - t));
     }
+
+    /**
+     * Airless bodies have no sea: deep craters get a smooth floor instead of a hard clamp (a 5 km deep basin becomes a 250 m deep one,
+     * monotonic, so ordering of heights is preserved). Positive heights as {@link #toBlockY}.
+     */
+    public static double toBlockYAirless(double heightMeters) {
+        if (heightMeters >= 0) return toBlockY(heightMeters);
+        return FLOOR * Math.tanh(-heightMeters / 600.0);          // FLOOR is negative: -250 at the deepest
+    }
 }

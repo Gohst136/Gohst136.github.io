@@ -22,4 +22,20 @@ public final class PlanetWorld {
 
     /** Half the side of one cube-face square in the vanilla plane, in blocks (= planet metres). */
     public static double halfSpan(long seed) { return PlanetDefinition.earth(seed).radius() * Math.PI / 4.0; }
+
+    // ---- the Moon (second body with real chunks) ----------------------------------------------------------------------------------
+
+    private static final ConcurrentHashMap<Long, Object[]> MOONS = new ConcurrentHashMap<>();
+
+    private static Object[] moon(long seed) {
+        return MOONS.computeIfAbsent(seed, s -> {
+            var def = dev.gohst136.planetary.system.StarSystem.example(s).body("moon");
+            var pd = dev.gohst136.planetary.system.BodyTerrain.planetFor(def);
+            return new Object[]{def, pd, dev.gohst136.planetary.system.BodyTerrain.terrainFor(def, pd)};
+        });
+    }
+
+    public static dev.gohst136.planetary.terrain.TerrainSampler moonTerrain(long seed) { return (dev.gohst136.planetary.terrain.TerrainSampler) moon(seed)[2]; }
+    public static PlanetDefinition moonPlanet(long seed) { return (PlanetDefinition) moon(seed)[1]; }
+    public static double moonHalfSpan(long seed) { return moonPlanet(seed).radius() * Math.PI / 4.0; }
 }

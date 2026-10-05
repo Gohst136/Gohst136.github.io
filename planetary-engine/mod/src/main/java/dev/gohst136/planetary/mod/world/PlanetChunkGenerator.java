@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.gohst136.planetary.math.Vec3;
+import dev.gohst136.planetary.planet.BodyPlane;
 import dev.gohst136.planetary.planet.PlaneUnwrap;
 import dev.gohst136.planetary.planet.VerticalMap;
 import dev.gohst136.planetary.terrain.RealisticTerrain;
@@ -70,7 +71,18 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
     /** One resolved block column. */
     private record Column(int groundY, int waterTopY, boolean river, boolean ocean, RealisticTerrain.Surface s) {}
 
+    /** Moon column: airless, no water, craters; heights through the airless vertical map. */
+    private Column moonColumn(int x, int z) {
+        double[] o = new double[5];
+        Vec3 d = PlaneUnwrap.inverse(x + 0.5 - BodyPlane.offsetX(BodyPlane.MOON), z + 0.5, PlanetWorld.moonHalfSpan(seed));
+        PlanetWorld.moonTerrain(seed).sampleSurface(d, 1.0, o);
+        int ground = (int) Math.floor(VerticalMap.toBlockYAirless(o[0]));
+        var s = new RealisticTerrain.Surface(o[0], -150.0, 0.0, 0.0, 1.0, o[1], o[2], o[3], false);   // albedo in the colour slots: picks the regolith block
+        return new Column(ground, Integer.MIN_VALUE, false, false, s);
+    }
+
     private Column column(int x, int z) {
+        if (BodyPlane.bodyAt(x) == BodyPlane.MOON) return moonColumn(x, z);
         Vec3 d = PlaneUnwrap.inverse(x + 0.5, z + 0.5, half);
         RealisticTerrain.Surface s = terrain.surface(d, 1.0);
         int ground = (int) Math.floor(VerticalMap.toBlockY(s.height()));
@@ -116,8 +128,14 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
         sec.setBlockState(lx, y & 15, lz, st, false);
     }
 
+    private static boolean isMoon(Column c) { return c.s().temperature() == -150.0 && c.s().continental() == 1.0; }
+
     private static BlockState surfaceBlock(Column c) {
         var s = c.s();
+        if (isMoon(c)) {
+            double albedo = s.g();
+            return albedo > 0.45 ? Blocks.ANDESITE.defaultBlockState() : (albedo > 0.33 ? Blocks.TUFF.defaultBlockState() : Blocks.BLACKSTONE.defaultBlockState());
+        }
         double h = s.height(), t = s.temperature(), m = s.moisture();
         if (c.ocean()) {
             if (h > -6) return Blocks.SAND.defaultBlockState();
@@ -133,6 +151,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
 
     private static BlockState fillerBlock(Column c) {
         BlockState top = surfaceBlock(c);
+        if (top.is(Blocks.ANDESITE) || top.is(Blocks.TUFF) || top.is(Blocks.BLACKSTONE)) return Blocks.STONE.defaultBlockState();
         if (top.is(Blocks.SAND)) return Blocks.SANDSTONE.defaultBlockState();
         if (top.is(Blocks.STONE) || top.is(Blocks.SNOW_BLOCK)) return Blocks.STONE.defaultBlockState();
         if (top.is(Blocks.GRAVEL) || top.is(Blocks.CLAY)) return Blocks.GRAVEL.defaultBlockState();
@@ -178,6 +197,7 @@ public final class PlanetChunkGenerator extends ChunkGenerator {
 
     @Override
     public void addDebugScreenInfo(List<String> info, RandomState random, BlockPos pos) {
+        if (BodyPlane.bodyAt(pos.getX()) == BodyPlane.MOON) { info.add("Planetary: the Moon"); return; }
         Vec3 d = PlaneUnwrap.inverse(pos.getX() + 0.5, pos.getZ() + 0.5, half);
         info.add(String.format("Planetary: lat %.2f lon %.2f edge %.2f", Math.toDegrees(Math.asin(d.y())), Math.toDegrees(Math.atan2(d.z(), d.x())), PlaneUnwrap.edgeDistance(d)));
     }
