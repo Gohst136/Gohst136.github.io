@@ -67,7 +67,26 @@ final class PlanetAutoTest {
     private static double moonAlt = 2.0e6;
     private static int moonStop, moonHold;
     private static final double[] MOON_STOPS = {2e6, 2e5, 2e4, 2e3, 200, 20, 2};
-    private static long moonHoldStart;
+    private static long moonHoldStart, moonChunkWait;
+    private static Vec3 moonTarget;
+
+    /** Landing direction on the Moon (Moon-fixed axes): lit by the sun, away from cube-face edges (the plane has a gap there). */
+    private static Vec3 moonDir() {
+        if (moonTarget == null) {
+            Vec3 sun = PlanetClient.BODIES.sunDirB("moon", PlanetClient.simTime);
+            double best = -1; Vec3 bestD = sun;
+            int n = 4000;
+            for (int i = 0; i < n; i++) {
+                double y = 1 - 2.0 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), phi = i * 2.399963229728653;
+                Vec3 d = new Vec3(r * Math.cos(phi), y, r * Math.sin(phi));
+                if (dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(d) > 0.8) continue;
+                double lit = d.dot(sun);
+                if (lit > best) { best = lit; bestD = d; }
+            }
+            moonTarget = bestD;
+        }
+        return moonTarget;
+    }
     private static final int ORBIT_SHOTS = 11;      // 8 planet views + sun at the limb + Moon close-up + Earth from the Moon
 
     /** Rodrigues rotation of v about the unit axis by angle. */
@@ -164,6 +183,11 @@ final class PlanetAutoTest {
             PlanetClient.initSystem();                           // sun direction (day side) for the landing site
             PlanetClient.anchor = targetDir();                   // landing site (vanilla path: terrain is flattened around it)
             startWatchdog();
+            var srv = mc.getSingleplayerServer();
+            if (srv != null) srv.execute(() -> {                             // fixed noon: real chunks are lit consistently for the screenshots
+                srv.getGameRules().getRule(net.minecraft.world.level.GameRules.RULE_DAYLIGHT).set(false, srv);
+                srv.overworld().setDayTime(6000);
+            });
             PlanetClient.setActive(true);
         }
         if (PlanetClient.active && !PlanetClient.bubbleLive && mc.player != null) aim(mc);
@@ -214,7 +238,7 @@ final class PlanetAutoTest {
     /** Aim at the planet centre, tilting towards the horizon as altitude drops. Called every client tick. */
     private static void aim(Minecraft mc) {
         if (moonPhase) {                                                     // toward the Moon's centre, tilting to the horizon as we descend
-            Vec3 dirB = PlanetClient.BODIES.sunDirB("moon", PlanetClient.simTime);
+            Vec3 dirB = moonDir();
             Vec3 tB = dirB.cross(Math.abs(dirB.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
             double rm = PlanetClient.BODIES.instance("moon").planet.radius();
             double tilt = Math.min(Math.toRadians(60), 0.6 * Math.asin(rm / (rm + moonAlt)));
@@ -250,12 +274,17 @@ final class PlanetAutoTest {
         double groundRadius = targetGround;
         if (moonPhase) {
             var in = PlanetClient.BODIES.instance("moon");
-            Vec3 dirB = PlanetClient.BODIES.sunDirB("moon", PlanetClient.simTime);                // the sub-solar point: always lit
-            if (moonHold == 0) {
+            Vec3 dirB = moonDir();
+            boolean waiting = PlanetClient.realWorld && moonAlt < 420 && !PlanetClient.bubbleLive && moonChunkWait != 0 && System.nanoTime() - moonChunkWait < 60_000_000_000L;
+            if (moonHold == 0 && !waiting) {
                 moonAlt = Math.max(MOON_STOPS[MOON_STOPS.length - 1], moonAlt - Math.min(moonAlt / 2.0, 1e18) / 30.0);
                 if (moonAlt <= MOON_STOPS[moonStop] * 1.0001) { moonAlt = MOON_STOPS[moonStop]; moonHold = 1; moonHoldStart = System.nanoTime(); }
             }
             double groundM = in.planet.radius() + in.terrain.heightAt(dirB);
+            if (PlanetClient.realWorld && moonAlt < 420 && !PlanetClient.bubbleLive) {         // wait for the real chunks around the Moon landing site (max 60 s)
+                if (moonChunkWait == 0) moonChunkWait = System.nanoTime();
+                if (System.nanoTime() - moonChunkWait < 60_000_000_000L) return PlanetClient.BODIES.toE("moon", PlanetClient.simTime, dirB.mul(groundM + moonAlt));
+            }
             return PlanetClient.BODIES.toE("moon", PlanetClient.simTime, dirB.mul(groundM + moonAlt));
         }
         if (lap) {
@@ -332,11 +361,14 @@ final class PlanetAutoTest {
             if (pendingName != null) return;
             pendingName = String.format("moon_%08.0fm.png", MOON_STOPS[moonStop]);
             String line = String.format("MOON alt=%.0fm patches=%d maxLevel=%d | moon %s", MOON_STOPS[moonStop], in.last == null ? 0 : in.last.patches.size(),
-                    in.last == null ? -1 : in.last.maxLevel, in.renderer.stats().get(0) + " " + in.renderer.stats().get(1));
+                    in.last == null ? -1 : in.last.maxLevel, in.renderer.stats().get(0) + " " + in.renderer.stats().get(1)) + "\n   " + PlanetClient.bubbleDiag();
             System.out.println("[planetary-autotest] " + line);
             try { log.write(line + "\n"); log.flush(); } catch (IOException ignored) {}
             moonStop++; moonHold = 0; stage("moon stop " + moonStop);
-            if (moonStop >= MOON_STOPS.length) { moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit"); }
+            if (moonStop >= MOON_STOPS.length) {
+                moonPhase = false; transit = true; clearPending = true; t = 0; alt = STOPS[0]; lastTransitNanos = 0; stage("transit");
+                PlanetClient.leaveBubble(); PlanetClient.moonFixed = false; PlanetClient.bubbleBody = "earth"; PlanetClient.anchor = targetDir();
+            }
             return;
         }
         if (lap) {
@@ -408,10 +440,21 @@ final class PlanetAutoTest {
     private static void drivePlayer(Minecraft mc) {
         var frame = PlanetClient.bubble;
         if (frame == null) return;
-        Vec3 d = targetDir();
-        Vec3 planetPos = d.mul(targetGround + alt);
-        Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
-        Vec3 look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
+        Vec3 d, look;
+        double a;
+        if (moonPhase && frame.body.equals("moon")) {
+            d = PlanetClient.anchor; a = moonAlt;
+            Vec3 tB = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+            double rm = PlanetClient.BODIES.instance("moon").planet.radius();
+            double tilt = Math.min(Math.toRadians(60), 0.6 * Math.asin(rm / (rm + moonAlt)));
+            look = d.mul(-1).add(tB.mul(Math.tan(tilt))).normalize();
+        } else {
+            d = targetDir(); a = alt;
+            Vec3 tangent = d.cross(Math.abs(d.y()) < 0.9 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0)).normalize();
+            look = d.mul(-1).add(tangent.mul(lookWeight())).normalize();
+        }
+        double ground = PlanetClient.bubbleGroundRadius;
+        Vec3 planetPos = d.mul(ground + a);
         double[] v = frame.vanillaPos(planetPos);
         float[] yp = frame.yawPitch(look);
         PlanetClient.teleportReal(v[0], v[1] - mc.player.getEyeHeight(), v[2], yp[0], yp[1]);

@@ -100,6 +100,9 @@ public final class PlanetClient {
     static BubbleFrame bubble;                 // frame exists once the real player has been parked at the anchor
     static double bubbleGroundRadius;          // planet radius + terrain height at the anchor (metres from the planet centre)
     static boolean bubbleLive;                 // the camera is the real player's (handoff done)
+    static String bubbleBody = "earth";        // body the anchor / bubble belongs to ("earth" or "moon")
+    static boolean moonFixed;                  // free flight near the Moon: camera stored in the Moon-fixed frame
+    static Vec3 posM = Vec3.ZERO;
     private static boolean preloaded;
     private static long frameCount, preloadFrame;
     private static double[] pendingTp;         // vanilla feet position the handoff teleport must reach
@@ -196,36 +199,55 @@ public final class PlanetClient {
      * once it has arrived, the camera becomes the real player's. The planet render is identical before and after: only
      * the real chunks appear on top of it.
      */
-    private static void handoff(Minecraft mc, Vec3 radial, Vec3 fwd, double alt) {
-        if (!realWorld && vanilla == null) return;
+    private static void handoff(Minecraft mc, String body, Vec3 posBody, Vec3 fwdBody, double alt) {
+        boolean moon = body.equals("moon");
+        if (moon ? !realWorld : (!realWorld && vanilla == null)) return;
         if (mc.getSingleplayerServer() == null || mc.player == null) return;
-        // manual flight: the landing site is wherever the player sinks towards (not near a cube edge, where the vanilla plane has a gap)
-        if (!PlanetAutoTest.enabled() && realWorld && alt < 4000 && !bubbleLive && !preloaded
-                && (anchor == null || PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor)))) > 1500.0)
+        Vec3 radial = posBody.normalize();
+        double R = moon ? dev.gohst136.planetary.mod.world.PlanetWorld.moonPlanet(PLANET.seed()).radius() : PLANET.radius();
+        // the landing site: wherever the player sinks towards (manual) / the benchmark's preset target (not near a cube edge, where the vanilla plane has a gap)
+        boolean wrongBody = !bubbleBody.equals(body);
+        if (alt < 4000 && !bubbleLive && !preloaded && realWorld
+                && (wrongBody || anchor == null || (!PlanetAutoTest.enabled() && R * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor)))) > 1500.0))
                 && dev.gohst136.planetary.planet.PlaneUnwrap.edgeDistance(radial) < 0.97) {
-            anchor = radial;
+            anchor = radial; bubbleBody = body;
         }
-        if (anchor == null) return;
+        if (anchor == null || !bubbleBody.equals(body)) return;
         frameCount++;
-        double dist = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
+        double dist = R * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
         if (!preloaded && alt < 4000 && dist < 30000) {
             preloaded = true; preloadFrame = frameCount;
             bubble = makeBubble();
-            double parkY = realWorld ? Math.max(0.0, dev.gohst136.planetary.planet.VerticalMap.toBlockY(TERRAIN.heightAt(anchor))) + 60 : bubble.y0 + 60;
+            double groundH = moon ? dev.gohst136.planetary.mod.world.PlanetWorld.moonTerrain(PLANET.seed()).heightAt(anchor) : TERRAIN.heightAt(anchor);
+            double parkY = realWorld ? Math.max(0.0, moon ? dev.gohst136.planetary.planet.VerticalMap.toBlockYAirless(groundH) : dev.gohst136.planetary.planet.VerticalMap.toBlockY(groundH)) + 60 : bubble.y0 + 60;
             teleportReal(bubble.x0, parkY, bubble.z0, 0f, 0f);
             return;
         }
         if (!preloaded) return;
         if (pendingTp == null && alt < 300 && dist < 1500 && frameCount - preloadFrame > 200 && chunksReady(mc) && mc.levelRenderer.hasRenderedAllSections()) {
-            double[] v = bubble.vanillaPos(pos);
-            float[] yp = bubble.yawPitch(fwd);
+            double[] v = bubble.vanillaPos(posBody);
+            float[] yp = bubble.yawPitch(fwdBody);
             pendingTp = new double[]{v[0], v[1] - mc.player.getEyeHeight(), v[2]};
             teleportReal(pendingTp[0], pendingTp[1], pendingTp[2], yp[0], yp[1]);
         }
         if (pendingTp != null && !bubbleLive) {
             double dx = mc.player.getX() - pendingTp[0], dy = mc.player.getY() - pendingTp[1], dz = mc.player.getZ() - pendingTp[2];
-            if (dx * dx + dy * dy + dz * dz < 9.0) { bubbleLive = true; pendingTp = null; }
+            if (dx * dx + dy * dy + dz * dz < 9.0) {
+                bubbleLive = true; pendingTp = null;
+                setGravityFactor(moon ? 1.62 / 9.81 : 1.0);
+            }
         }
+    }
+
+    /** Scales vanilla gravity for the real player (Moon: 1.62 m/s^2). */
+    static void setGravityFactor(double factor) {
+        var server = Minecraft.getInstance().getSingleplayerServer();
+        if (server == null) return;
+        server.execute(() -> {
+            if (server.getPlayerList().getPlayers().isEmpty()) return;
+            var attr = server.getPlayerList().getPlayers().get(0).getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.GRAVITY);
+            if (attr != null) attr.setBaseValue(0.08 * factor);
+        });
     }
 
     /** True when the client has the chunks around the anchor (5x5) that the parked real player makes the server generate. */
@@ -282,7 +304,7 @@ public final class PlanetClient {
 
     /** Leaves the real-world bubble: the free-flight camera takes over again (used by the benchmark to start the orbit tour). */
     static void leaveBubble() {
-        bubbleLive = false; pendingTp = null; preloaded = false; bubble = null;
+        bubbleLive = false; pendingTp = null; preloaded = false; bubble = null; setGravityFactor(1.0);
     }
 
     /** Moves the real (server-side) player; used for the handoff and by the benchmark. */
@@ -299,8 +321,16 @@ public final class PlanetClient {
 
     /** Builds the bubble frame at the anchor: planet ground there, real vanilla ground height there. */
     static BubbleFrame makeBubble() {
+        if (realWorld && bubbleBody.equals("moon")) {
+            var mp = dev.gohst136.planetary.mod.world.PlanetWorld.moonPlanet(PLANET.seed());
+            var mt = dev.gohst136.planetary.mod.world.PlanetWorld.moonTerrain(PLANET.seed());
+            bubbleGroundRadius = mp.radius() + mt.heightAt(anchor);
+            return new BubbleFrame(anchor, mp.radius(), mp.radius(), 0.0, "moon", dev.gohst136.planetary.planet.BodyPlane.offsetX(dev.gohst136.planetary.planet.BodyPlane.MOON),
+                    dev.gohst136.planetary.planet.VerticalMap::toMetersAirless, dev.gohst136.planetary.planet.VerticalMap::toBlockYAirless);
+        }
         bubbleGroundRadius = PLANET.radius() + TERRAIN.heightAt(anchor);
-        if (realWorld) return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius(), 0.0);   // block Y == metres above sea level (below Y 800)
+        if (realWorld) return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius(), 0.0, "earth", 0.0,
+                dev.gohst136.planetary.planet.VerticalMap::toMeters, dev.gohst136.planetary.planet.VerticalMap::toBlockY);
         var m = dev.gohst136.planetary.planet.PlaneUnwrap.map(anchor, PLANET.radius() * Math.PI / 4.0, 0.0);
         double y0 = vanilla.exactHeight(m.x1(), m.z1()) + 63.0;
         return new BubbleFrame(anchor, PLANET.radius(), PLANET.radius() + TERRAIN.heightAt(anchor), y0);
@@ -349,7 +379,53 @@ public final class PlanetClient {
         Vec3 radial = pos.normalize();
         Vec3 vanillaUp = new Vec3(cam.getUpVector().x(), cam.getUpVector().y(), cam.getUpVector().z());
         boolean inertialView = false;
-        if (!bubbleLive) {
+        boolean moonView = false;                                            // vanilla view axes = Moon-fixed axes this frame
+        Bodies.Instance moonInst = (BODIES != null && realWorld) ? BODIES.instance("moon") : null;
+        if (!bubbleLive && moonInst != null) {
+            double rm = moonInst.planet.radius();
+            Vec3 relM = BODIES.fromE("moon", simTime, pos);
+            boolean near = moonFixed ? relM.length() < 3.0 * rm : relM.length() < 2.2 * rm;
+            if (near && !moonFixed) {                                        // entering: view axes switch to the Moon's
+                Vec3 fE = inertial ? toE(fwd) : fwd, lE = inertial ? toE(lft) : lft, uE = inertial ? toE(vanillaUp) : vanillaUp;
+                inertial = false;
+                moonFixed = true; posM = relM;
+                fwd = BODIES.dirFromE("moon", simTime, fE); lft = BODIES.dirFromE("moon", simTime, lE); vanillaUp = BODIES.dirFromE("moon", simTime, uE);
+                aimPlayer(mc, fwd);
+            } else if (!near && moonFixed) {                                 // leaving: back to Earth-fixed axes (the Earth branch below takes over)
+                moonFixed = false;
+                fwd = BODIES.dirToE("moon", simTime, fwd); lft = BODIES.dirToE("moon", simTime, lft); vanillaUp = BODIES.dirToE("moon", simTime, vanillaUp);
+                aimPlayer(mc, fwd);
+            }
+            if (moonFixed) {
+                moonView = true;
+                Vec3 radialB = posM.normalize();
+                double groundB = rm + moonInst.terrain.heightAt(radialB);
+                double altM = Math.max(1.0, posM.length() - groundB);
+                speed = Math.max(5.0, altM * 0.8) * (BOOST.isDown() ? 4.0 : 1.0);
+                var o = mc.options;
+                Vec3 move = Vec3.ZERO;
+                if (o.keyUp.isDown()) move = move.add(fwd);
+                if (o.keyDown.isDown()) move = move.sub(fwd);
+                if (o.keyLeft.isDown()) move = move.add(lft);
+                if (o.keyRight.isDown()) move = move.sub(lft);
+                if (o.keyJump.isDown()) move = move.add(radialB);
+                if (o.keyShift.isDown()) move = move.sub(radialB);
+                if (move.length() > 0) {
+                    Vec3 target = posM.add(move.normalize().mul(speed * dt));
+                    var hit = dev.gohst136.planetary.physics.SweptCollision.move(moonInst.terrain, rm, posM, target, 2.0, moonInst.terrain.slopeBound());
+                    posM = hit.position();
+                }
+                if (PlanetAutoTest.enabled()) { pos = PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); posM = BODIES.fromE("moon", simTime, pos); }
+                Vec3 ndM = posM.normalize();
+                double minRM = rm + moonInst.terrain.heightAt(ndM) + 2.0;
+                if (posM.length() < minRM) posM = ndM.mul(minRM);
+                pos = BODIES.toE("moon", simTime, posM);
+                handoff(mc, "moon", posM, fwd, Math.max(0.0, posM.length() - (rm + moonInst.terrain.heightAt(posM.normalize()))));
+                radial = BODIES.dirToE("moon", simTime, posM.normalize());
+                fwd = BODIES.dirToE("moon", simTime, fwd); lft = BODIES.dirToE("moon", simTime, lft); vanillaUp = BODIES.dirToE("moon", simTime, vanillaUp);
+            }
+        }
+        if (!bubbleLive && !moonView) {
             // frame choice: near the planet the camera co-rotates with it (hovering stays hovering); in space it is inertial
             if (!PlanetAutoTest.enabled() && SYSTEM != null) {
                 double rr = pos.length();
@@ -392,19 +468,27 @@ public final class PlanetClient {
             double minR = PLANET.radius() + TERRAIN.heightAt(nd) + 2.0;
             if (pos.length() < minR) { pos = nd.mul(minR); if (inertial) posI = toI(pos); }
             if (inertial) { fwd = toE(fwd); lft = toE(lft); vanillaUp = toE(vanillaUp); }       // from here on everything is in E axes
-            handoff(mc, pos.normalize(), fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
+            handoff(mc, "earth", pos, fwd, Math.max(0.0, pos.length() - (PLANET.radius() + TERRAIN.heightAt(pos.normalize()))));
         } else {
-            // bubble: the camera IS the real player's camera, mapped into the planet frame
+            // bubble: the camera IS the real player's camera, mapped into the body's frame (and from there into the render frame E)
             if (PlanetAutoTest.enabled()) { PlanetAutoTest.scriptedPosition(); speed = PlanetAutoTest.scriptedSpeed(); } else speed = 0;   // scripted descent keeps advancing; the real player is driven from its altitude
             var cp = cam.getPosition();
-            pos = bubble.position(cp.x, cp.y, cp.z);
-            fwd = bubble.direction(look.x(), look.y(), look.z());
-            radial = pos.normalize();
+            Vec3 posB = bubble.position(cp.x, cp.y, cp.z);
+            Vec3 fwdB = bubble.direction(look.x(), look.y(), look.z());
+            Vec3 radialB = posB.normalize();
+            boolean onMoon = bubble.body.equals("moon");
+            pos = onMoon ? BODIES.toE("moon", simTime, posB) : posB;
+            fwd = onMoon ? BODIES.dirToE("moon", simTime, fwdB) : fwdB;
+            radial = onMoon ? BODIES.dirToE("moon", simTime, radialB) : radialB;
             // flew back out of the bubble: more than 800 m above the LOCAL ground (not above sea level: the landing site can lie on a
             // plateau), or more than 3 km away from the anchor
-            double aboveGround = pos.length() - bubbleGroundRadius;
-            double away = PLANET.radius() * Math.acos(Math.max(-1.0, Math.min(1.0, radial.dot(anchor))));
-            if (aboveGround > 800.0 || away > 3000.0) { bubbleLive = false; pendingTp = null; preloaded = false; }
+            double aboveGround = posB.length() - bubbleGroundRadius;
+            double bodyR = onMoon ? BODIES.instance("moon").planet.radius() : PLANET.radius();
+            double away = bodyR * Math.acos(Math.max(-1.0, Math.min(1.0, radialB.dot(anchor))));
+            if (aboveGround > 800.0 || away > 3000.0) {
+                bubbleLive = false; pendingTp = null; preloaded = false; setGravityFactor(1.0);
+                if (onMoon) { moonFixed = true; posM = posB; }
+            }
         }
 
         Matrix4f projIn = e.getProjectionMatrix();
@@ -418,9 +502,25 @@ public final class PlanetClient {
         Vec3 upRef = nearBodyUp(pos, radial);                                  // local vertical of the nearest body (Moon, ...) or of the home planet
         Vec3 desired = upRef.sub(fwd.mul(upRef.dot(fwd)));
         Matrix4f viewRot = new Matrix4f(e.getModelViewMatrix());
+        Matrix4f eToMoon = null;                                             // E vectors -> Moon-fixed vectors (columns = the Moon-frame coordinates of E's unit axes)
+        if ((bubbleLive && bubble.body.equals("moon")) || moonView) {
+            Vec3 bx = BODIES.dirFromE("moon", simTime, new Vec3(1, 0, 0)), by = BODIES.dirFromE("moon", simTime, new Vec3(0, 1, 0)), bz = BODIES.dirFromE("moon", simTime, new Vec3(0, 0, 1));
+            eToMoon = new Matrix4f((float) bx.x(), (float) bx.y(), (float) bx.z(), 0f, (float) by.x(), (float) by.y(), (float) by.z(), 0f,
+                    (float) bz.x(), (float) bz.y(), (float) bz.z(), 0f, 0f, 0f, 0f, 1f);
+        }
         if (bubbleLive) {
-            camUp = bubble.direction(up.x(), up.y(), up.z());
+            Vec3 upB = bubble.direction(up.x(), up.y(), up.z());
+            camUp = bubble.body.equals("moon") ? BODIES.dirToE("moon", simTime, upB) : upB;
             viewRot = new Matrix4f(e.getModelViewMatrix()).mul(bubble.viewTransform());
+            if (eToMoon != null) viewRot.mul(eToMoon);
+        } else if (moonView) {
+            viewRot = new Matrix4f(e.getModelViewMatrix()).mul(eToMoon);
+            if (desired.length() > 1e-3) {
+                desired = desired.normalize();
+                camUp = desired;
+                org.joml.Vector3f dv = viewRot.transformDirection(new org.joml.Vector3f((float) desired.x(), (float) desired.y(), (float) desired.z()));
+                viewRot = new Matrix4f().rotateZ((float) Math.atan2(dv.x, dv.y)).mul(viewRot);
+            }
         } else if (inertialView) {
             camUp = vanillaUp;                                            // no auto-level in space
             Vec3 ex = toI(new Vec3(1, 0, 0)), ey = toI(new Vec3(0, 1, 0)), ez = toI(new Vec3(0, 0, 1));

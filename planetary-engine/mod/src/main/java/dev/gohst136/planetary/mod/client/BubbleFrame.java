@@ -6,6 +6,8 @@ import dev.gohst136.planetary.planet.PlaneUnwrap;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
+import java.util.function.DoubleUnaryOperator;
+
 /**
  * Reference frame that ties the real vanilla world to the planet around a landing site (the "simulation bubble").
  * Vanilla (x east, y up, z south; right-handed) maps onto the tangent plane at the anchor direction d0:
@@ -17,14 +19,25 @@ import org.joml.Matrix4f;
 final class BubbleFrame {
     final Vec3 d0, ex, ey, ez;
     final double x0, z0, y0, groundRadius;
+    private final DoubleUnaryOperator yToMeters, metersToY;     // vertical map between vanilla block Y and metres above the body's baseline radius
+    final String body;
     private final Matrix4f toPlanet4;      // vanilla direction -> planet direction (columns ex, ey, ez)
     private final Matrix4f viewTransform;  // its inverse (transpose), applied after the vanilla view rotation
 
     BubbleFrame(Vec3 anchorDir, double planetRadius, double groundRadius, double y0) {
+        this(anchorDir, planetRadius, groundRadius, y0, "earth", 0.0, null, null);
+    }
+
+    /** @param xOffset plane x of the body's centre (see BodyPlane); maps null = linear (Y - y0). */
+    BubbleFrame(Vec3 anchorDir, double planetRadius, double groundRadius, double y0, String body, double xOffset,
+                DoubleUnaryOperator yToMeters, DoubleUnaryOperator metersToY) {
+        this.body = body;
+        this.yToMeters = yToMeters != null ? yToMeters : (y -> y - y0);
+        this.metersToY = metersToY != null ? metersToY : (m -> m + y0);
         this.d0 = anchorDir.normalize();
         int face = CubeSphere.faceOf(d0);
         var m = PlaneUnwrap.map(d0, planetRadius * Math.PI / 4.0, 0.0);
-        this.x0 = m.x1(); this.z0 = m.z1();
+        this.x0 = m.x1() + xOffset; this.z0 = m.z1();
         Vec3 u = CubeSphere.uAxis(face);
         this.ey = d0;
         this.ex = u.sub(d0.mul(u.dot(d0))).normalize();
@@ -39,12 +52,12 @@ final class BubbleFrame {
     }
 
     Vec3 position(double x, double y, double z) {
-        return d0.mul(groundRadius + (y - y0)).add(ex.mul(x - x0)).add(ez.mul(z - z0));
+        return d0.mul(groundRadius + yToMeters.applyAsDouble(y)).add(ex.mul(x - x0)).add(ez.mul(z - z0));
     }
 
     /** Inverse of {@link #position}: planet-frame position -> vanilla (X, Y, Z). */
     double[] vanillaPos(Vec3 p) {
-        return new double[]{x0 + p.dot(ex), y0 + (p.dot(d0) - groundRadius), z0 + p.dot(ez)};
+        return new double[]{x0 + p.dot(ex), metersToY.applyAsDouble(p.dot(d0) - groundRadius), z0 + p.dot(ez)};
     }
 
     /** Planet-frame direction -> vanilla yaw/pitch in degrees (MC: yaw 0 = +z, 90 = -x; pitch > 0 looks down). */

@@ -31,4 +31,11 @@ public final class VerticalMap {
         if (heightMeters >= 0) return toBlockY(heightMeters);
         return FLOOR * Math.tanh(-heightMeters / 600.0);          // FLOOR is negative: -250 at the deepest
     }
+
+    /** Inverse of {@link #toBlockYAirless} (heights clamped just above the floor so the inverse stays finite). */
+    public static double toMetersAirless(double blockY) {
+        if (blockY >= 0) return toMeters(blockY);
+        double t = Math.min(0.9995, -blockY / -FLOOR);
+        return -600.0 * 0.5 * Math.log((1 + t) / (1 - t));
+    }
 }
