@@ -28,6 +28,12 @@
       <input type="text" name="username" value="macray" autocomplete="username" hidden>
       <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password" required>
       <label class="check"><input id="remember" type="checkbox" checked> Auf diesem Gerät merken</label>
+      <details class="adv">
+        <summary>Feed-Adresse</summary>
+        <input id="feedUrl" type="text" inputmode="url" autocapitalize="off" spellcheck="false"
+               placeholder="https://dein-mac.tailnet.ts.net/">
+        <small class="muted">Leer lassen für die Standard-Adresse aus <code>config.js</code>.</small>
+      </details>
       <button id="unlockBtn" type="submit" class="btn primary">Entsperren</button>
       <p id="loginError" class="error" role="alert"></p>
     </form>
@@ -89,6 +95,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

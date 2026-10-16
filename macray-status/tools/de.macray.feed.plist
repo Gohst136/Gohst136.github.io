@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Startet tools/serve_feed.py automatisch beim Anmelden und hält ihn am Laufen.
+     PFADE ANPASSEN, dann:
+       cp tools/de.macray.feed.plist ~/Library/LaunchAgents/
+       launchctl load -w ~/Library/LaunchAgents/de.macray.feed.plist
+     Stoppen: launchctl unload -w ~/Library/LaunchAgents/de.macray.feed.plist
+     Log:     /tmp/macray-feed.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.macray.feed</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/DEINNAME/macray-status/tools/serve_feed.py</string>
+    <string>--dir</string>
+    <string>/Users/DEINNAME/macray/feed</string>
+    <string>--quiet</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/macray-feed.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/macray-feed.log</string>
+</dict>
+</plist>

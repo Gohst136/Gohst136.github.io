@@ -97,6 +97,13 @@ h2 {
 .login-card input[type=password]:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 .check { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--muted); }
 .check input { width: 18px; height: 18px; accent-color: var(--blue); }
+.adv { text-align: left; color: var(--muted); }
+.adv summary { cursor: pointer; text-align: center; }
+.adv input {
+  width: 100%; margin: 10px 0 6px; padding: 12px;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font: inherit; font-size: 15px;
+}
 .error { color: var(--red); min-height: 1.4em; font-weight: 600; }
 
 /* ---------- Layout ---------- */

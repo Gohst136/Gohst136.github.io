@@ -9,7 +9,7 @@
  * Bilder:           feed/img/<hash>.bin = iv(16) || ct || mac(32), gleiche Schlüssel
  */
 
-const FEED_URL = 'feed/status.enc';
+const LS_FEED = 'macray.feedUrl';     // vom Nutzer gesetzte Feed-Adresse (überschreibt config.js)
 const POLL_MS = 30_000;
 const STALE_MS = 10 * 60_000;
 const LS_KEYS = 'macray.keys.v1';     // { "<iter>:<salt>": "<b64 der 64 Schlüsselbytes>" }
@@ -17,6 +17,16 @@ const LS_NOTIFY = 'macray.notify';
 const MAX_STORED_KEYS = 3;
 
 const $ = (id) => document.getElementById(id);
+
+/** Basisadresse des Feeds, immer mit „/“ am Ende. Reihenfolge: eigene Eingabe > config.js > „feed/“. */
+function normalizeFeed(u) {
+  u = (u || '').trim();
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u) && /\.[a-z]{2,}(\/|$)/i.test(u) && !u.startsWith('.')) u = 'https://' + u;
+  return u.endsWith('/') ? u : u + '/';
+}
+const defaultFeed = () => normalizeFeed(window.MACRAY_CONFIG?.feedUrl) || 'feed/';
+const feedBase = () => normalizeFeed(lsGet(LS_FEED, '')) || defaultFeed();
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -114,7 +124,14 @@ async function openBox(keys, iv, ct, mac) {
 let currentKeys = null;  // Schlüssel des zuletzt erfolgreich entschlüsselten Feeds
 
 async function fetchStatus() {
-  const res = await fetch(`${FEED_URL}?t=${Date.now()}`, { cache: 'no-store' });
+  let res;
+  try {
+    res = await fetch(`${feedBase()}status.enc?t=${Date.now()}`, { cache: 'no-store' });
+  } catch {
+    throw new Error(feedBase().startsWith('http')
+      ? 'Mac nicht erreichbar (offline, im Ruhezustand oder Feed-Server/Funnel aus)'
+      : 'Keine Verbindung');
+  }
   if (!res.ok) throw new Error(`Feed nicht erreichbar (HTTP ${res.status})`);
   const box = await res.json();
   if (box.v !== 1) throw new Error(`Unbekannte Feed-Version: ${box.v}`);
@@ -139,7 +156,7 @@ function loadImage(file) {
   if (imgCache.has(file)) return imgCache.get(file);
   const keys = currentKeys;
   const p = (async () => {
-    const res = await fetch(`feed/${file}`);   // Name = Hash, ändert sich nie -> darf gecacht werden
+    const res = await fetch(`${feedBase()}${file}`);   // Name = Hash, ändert sich nie -> darf gecacht werden
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = new Uint8Array(await res.arrayBuffer());
     if (buf.length < 16 + 16 + 32) throw new Error('Datei zu kurz');
@@ -498,6 +515,7 @@ function showLogin(hint) {
   $('loginHint').textContent = hint || 'Die Daten sind verschlüsselt. Bitte Passwort eingeben.';
   $('loginError').textContent = '';
   $('pw').value = '';
+  $('feedUrl').value = feedBase();
   setTimeout(() => $('pw').focus(), 50);
 }
 
@@ -516,6 +534,8 @@ async function onLogin(ev) {
   $('loginError').textContent = '';
   password = $('pw').value;
   remember = $('remember').checked;
+  const feed = normalizeFeed($('feedUrl').value);
+  if (feed && feed !== defaultFeed()) lsSet(LS_FEED, feed); else lsDel(LS_FEED);
   keyCache.clear();
   try {
     const next = await fetchStatus();

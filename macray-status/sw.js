@@ -1,11 +1,12 @@
 /* Service Worker: hält die App-Hülle offline verfügbar.
  * Der Feed (feed/…) wird NIE vom Service Worker beantwortet – immer frisch vom Netz. */
-const CACHE = 'macray-shell-v1';
+const CACHE = 'macray-shell-v2';
 const SHELL = [
   './',
   'index.html',
   'style.css',
   'app.js',
+  'config.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
