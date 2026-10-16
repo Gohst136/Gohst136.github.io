@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MacRay Status</title>
+  <meta name="description" content="Status der Trainings- und Aufnahmejobs auf dem Mac">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MacRay">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Anmeldung -->
+  <section id="login" class="login" hidden>
+    <form id="loginForm" class="login-card" autocomplete="on">
+      <img src="icons/icon-192.png" alt="" class="login-icon" width="72" height="72">
+      <h1>MacRay Status</h1>
+      <p id="loginHint" class="muted">Die Daten sind verschlüsselt. Bitte Passwort eingeben.</p>
+      <input type="text" name="username" value="macray" autocomplete="username" hidden>
+      <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password" required>
+      <label class="check"><input id="remember" type="checkbox" checked> Auf diesem Gerät merken</label>
+      <button id="unlockBtn" type="submit" class="btn primary">Entsperren</button>
+      <p id="loginError" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- Hauptansicht -->
+  <main id="app" hidden>
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>MacRay</h1>
+        <div id="updated" class="updated">–</div>
+      </div>
+      <div class="topbar-actions">
+        <button id="refreshBtn" class="icon-btn" title="Jetzt aktualisieren" aria-label="Jetzt aktualisieren">⟳</button>
+        <button id="notifyBtn" class="icon-btn" title="Benachrichtigungen" aria-label="Benachrichtigungen">🔕</button>
+        <button id="logoutBtn" class="icon-btn" title="Abmelden" aria-label="Abmelden">⎋</button>
+      </div>
+    </header>
+
+    <div id="staleBanner" class="banner danger" hidden></div>
+    <div id="errorBanner" class="banner warn" hidden></div>
+
+    <section id="autopilotSec" class="section" hidden>
+      <h2>Autopilot</h2>
+      <div id="autopilot" class="autopilot"></div>
+    </section>
+
+    <section class="section">
+      <h2>Jobs</h2>
+      <div id="jobs" class="jobs"><p class="muted">Lade …</p></div>
+    </section>
+
+    <section id="planSec" class="section" hidden>
+      <h2>Zeitplan</h2>
+      <ol id="plan" class="timeline"></ol>
+    </section>
+
+    <section id="notesSec" class="section" hidden>
+      <h2>Meldungen</h2>
+      <ul id="notes" class="notes"></ul>
+    </section>
+
+    <section id="imagesSec" class="section" hidden>
+      <h2>Bilder</h2>
+      <div id="gallery" class="gallery"></div>
+    </section>
+
+    <footer class="foot muted">Aktualisiert sich alle 30 s automatisch.</footer>
+  </main>
+
+  <!-- Vollbild-Ansicht für Bilder -->
+  <div id="lightbox" class="lightbox" hidden>
+    <button class="lightbox-close" aria-label="Schließen">✕</button>
+    <figure>
+      <img id="lbImg" alt="">
+      <figcaption><span id="lbCaption"></span><time id="lbTime"></time></figcaption>
+    </figure>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
